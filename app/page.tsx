@@ -1,507 +1,312 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Image from "next/image";
-import { Loader, AlertCircle, Barcode, Grid3x3 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { searchMaterial, searchByBarcode, searchByReference } from "@/services/search";
+import { Material } from "@/types/material";
 import Scanner from "@/components/Scanner";
 import ProductCard from "@/components/ProductCard";
-import QuantityPanel from "@/components/QuantityPanel";
+import CacheLoader from "@/components/CacheLoader";
 import MaterialsList from "@/components/MaterialsList";
-import {
-  searchMaterialByBarcode,
-  getMaterialDetails,
-  fetchAllMaterialsPaginated,
-} from "@/services/materials";
-import { Material } from "@/types/material";
+import { getCacheInfo, getAllMaterialsFromCache } from "@/services/cache";
+import { Search, AlertCircle, Loader2, CheckCircle, List } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export default function Home() {
-  const [scannerActive, setScannerActive] = useState(false);
-  const [material, setMaterial] = useState<Material | null>(null);
-  const [localQuantity, setLocalQuantity] = useState(0);
+  const [scannedCode, setScannedCode] = useState("");
+  const [manualCode, setManualCode] = useState("");
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [manualBarcode, setManualBarcode] = useState("");
-  const [allMaterials, setAllMaterials] = useState<Material[]>([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [searchType, setSearchType] = useState<"barcode" | "reference" | "auto">("auto");
+  const [cacheReady, setCacheReady] = useState(false);
+  const [cacheItemCount, setCacheItemCount] = useState(0);
+
+  // Estados nuevos para la lista completa de materiales
   const [showMaterialsList, setShowMaterialsList] = useState(false);
+  const [allMaterials, setAllMaterials] = useState<Material[]>([]);
 
-  // Cargar todos los materiales al montar el componente
+  // Verificar si el caché está listo
   useEffect(() => {
-    const loadMaterials = async () => {
-      try {
-        setInitialLoading(true);
-        const materials = await fetchAllMaterialsPaginated();
-        setAllMaterials(materials);
-      } catch (err) {
-        setError("Error al cargar los materiales. Intenta recargar la página.");
-        console.error(err);
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
-    loadMaterials();
+    const info = getCacheInfo();
+    setCacheReady(info.itemCount > 0);
+    setCacheItemCount(info.itemCount);
   }, []);
 
-  const handleScan = useCallback(
-    async (barcode: string) => {
+  const handleCacheLoaded = useCallback((count: number) => {
+    setCacheReady(true);
+    setCacheItemCount(count);
+  }, []);
+
+  // Cargar todos los materiales solo cuando se abre la lista para ahorrar memoria
+  const handleOpenMaterialsList = () => {
+    const materials = getAllMaterialsFromCache();
+    setAllMaterials(materials);
+    setShowMaterialsList(true);
+  };
+
+  const handleSearch = useCallback(
+    async (code: string, type: "barcode" | "reference" | "auto" = "auto") => {
+      if (!code.trim()) {
+        setError("Por favor ingresa un código");
+        return;
+      }
+
+      if (!cacheReady) {
+        setError("El caché no está listo. Por favor carga los materiales primero.");
+        return;
+      }
+
       setLoading(true);
-      setError(null);
+      setError("");
+      setSuccess("");
 
       try {
-        const foundMaterial = await searchMaterialByBarcode(
-          barcode,
-          allMaterials
-        );
+        let material: Material | null = null;
 
-        if (foundMaterial) {
-          setMaterial(foundMaterial);
-          setLocalQuantity(foundMaterial.quantity);
-          setScannerActive(false);
+        if (type === "barcode") {
+          material = await searchByBarcode(code);
+          if (!material) {
+            setError(`Código de barras "${code}" no encontrado en los materiales cargados`);
+          }
+        } else if (type === "reference") {
+          material = await searchByReference(code);
+          if (!material) {
+            setError(`Referencia "${code}" no encontrada en los materiales cargados`);
+          }
         } else {
-          setError(`Material no encontrado: ${barcode}`);
-          setTimeout(() => setError(null), 3000);
+          material = await searchMaterial(code);
+          if (!material) {
+            setError(`Material no encontrado. Verifique que el código o referencia sean correctos.`);
+          }
+        }
+
+        if (material) {
+          setSelectedMaterial(material);
+          setSuccess(`✓ Material encontrado`);
+          setManualCode("");
+          setScannedCode("");
         }
       } catch (err) {
-        setError("Error al buscar el material. Intenta nuevamente.");
-        console.error(err);
-        setTimeout(() => setError(null), 3000);
+        setError(
+          `Error en la búsqueda: ${err instanceof Error ? err.message : "Error desconocido"}`
+        );
+        console.error("Search error:", err);
       } finally {
         setLoading(false);
       }
     },
-    [allMaterials]
+    [cacheReady]
   );
 
-  const handleManualSearch = async () => {
-    if (!manualBarcode.trim()) {
-      setError("Ingresa un código de barras");
-      return;
+  // Cuando se scanea un código
+  const handleScan = useCallback(
+    (code: string) => {
+      setScannedCode(code);
+      handleSearch(code, "auto");
+    },
+    [handleSearch]
+  );
+
+  // Busca manual
+  const handleManualSearch = useCallback(() => {
+    if (manualCode.trim()) {
+      handleSearch(manualCode, searchType === "auto" ? "auto" : searchType);
     }
+  }, [manualCode, handleSearch, searchType]);
 
-    await handleScan(manualBarcode);
-    setManualBarcode("");
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Enter key en el input manual
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleManualSearch();
     }
   };
 
-  const handleCloseMaterial = () => {
-    setMaterial(null);
-    setLocalQuantity(0);
-    setScannerActive(false);
-  };
-
-  const handleNewScan = () => {
-    handleCloseMaterial();
-    setScannerActive(true);
-  };
-
-  const handleSelectFromList = async (selectedMaterial: Material) => {
-    setLoading(true);
-    setShowMaterialsList(false);
-
-    try {
-      // Obtener detalles completos
-      const details = await getMaterialDetails(selectedMaterial.material_id);
-      setMaterial(details);
-      setLocalQuantity(details.quantity);
-    } catch (err) {
-      setError("Error al cargar los detalles del material");
-      console.error(err);
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Show loading screen while fetching materials
-  if (initialLoading) {
-    return (
-      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader size={40} className="text-cyan-400 animate-spin" />
-          <p className="text-zinc-400">Cargando materiales...</p>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      {/* Background gradient accent */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <div className="relative px-4 py-6 border-b border-zinc-800 sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
-                <Barcode size={20} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-white">Cazapiezas</h1>
-                <p className="text-xs text-zinc-500">Stock Manager</p>
-              </div>
-            </div>
-          </div>
+    <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4">
+      <div className="max-w-2xl mx-auto">
+        {/* Header con tu Logo PNG */}
+        <div className="flex flex-col items-center justify-center mb-8 pt-6 text-center">
+          <Logo size={56} />
         </div>
-      </div>
 
-      <div className="max-w-md mx-auto p-4 pb-12 relative">
-        {/* No Material State */}
-        {!material && (
-          <div className="space-y-6">
-            {/* Logo */}
-            <div className="flex justify-center pt-8 mb-8">
-              <div className="relative">
-                <div className="absolute inset-0 bg-cyan-500/20 blur-2xl rounded-full" />
-                <div className="relative bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
-                  <Barcode size={48} className="text-cyan-400" />
-                </div>
-              </div>
-            </div>
+        {/* Cache Loader Component */}
+        {!cacheReady && (
+          <div className="mb-8">
+            <CacheLoader onCacheLoaded={handleCacheLoaded} />
+          </div>
+        )}
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle
-                  size={20}
-                  className="text-red-400 flex-shrink-0 mt-0.5"
-                />
-                <p className="text-sm text-red-300">{error}</p>
-              </div>
-            )}
+        {/* Cache Ready Indicator */}
+        {cacheReady && (
+          <div className="bg-green-900/20 border border-green-800 rounded-xl p-3 mb-6 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+            <p className="text-sm text-green-300">
+              ✓ Caché listo - {cacheItemCount} materiales cargados (búsqueda offline)
+            </p>
+          </div>
+        )}
 
-            {/* Manual Input */}
-            <div className="space-y-3">
-              <label className="text-xs font-medium text-zinc-400">
-                O ingresa manualmente
-              </label>
-              <input
-                type="text"
-                value={manualBarcode}
-                onChange={(e) => setManualBarcode(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Código de barras"
-                className="
-                  w-full px-4 py-4 rounded-xl
-                  bg-zinc-900 border-2 border-zinc-800
-                  text-white placeholder-zinc-600
-                  focus:border-cyan-500 focus:outline-none
-                  transition-colors text-base font-medium
-                  min-h-[48px]
-                "
-              />
-              <button
-                onClick={handleManualSearch}
-                disabled={loading || !manualBarcode.trim()}
-                className={`
-                  w-full py-4 rounded-xl font-semibold text-base
-                  transition-all min-h-[48px]
-                  flex items-center justify-center gap-2
-                  ${
-                    loading || !manualBarcode.trim()
-                      ? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                      : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-700 hover:to-cyan-600 text-white active:scale-95"
-                  }
-                `}
-              >
-                {loading ? (
-                  <>
-                    <Loader size={20} className="animate-spin" />
-                    <span>Buscando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Barcode size={20} />
-                    <span>Buscar Código</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Divider */}
-            <div className="relative h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
-
-            {/* Scanner Button */}
-            <button
-              onClick={() => setScannerActive(true)}
-              disabled={loading || scannerActive}
-              className={`
-                w-full py-4 rounded-xl font-semibold text-base
-                flex items-center justify-center gap-2
-                transition-all min-h-[48px]
-                ${
-                  scannerActive || loading
-                    ? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                    : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-700 hover:to-cyan-600 text-white active:scale-95"
-                }
-              `}
-            >
-              {scannerActive ? (
-                <>
-                  <Loader size={20} className="animate-spin" />
-                  <span>Escaneando...</span>
-                </>
-              ) : (
-                <>
-                  <Barcode size={20} />
-                  <span>Escanear Código de Barras</span>
-                </>
+        {/* Scanner & Manual Search */}
+        {cacheReady && (
+          <>
+            <div className="mb-8">
+              <Scanner onScan={handleScan} />
+              {scannedCode && (
+                <p className="text-sm text-red-400 mt-2 text-center">
+                  ✓ Código escaneado: <span className="font-mono">{scannedCode}</span>
+                </p>
               )}
-            </button>
-
-            {/* Show All Materials Button */}
-            <button
-              onClick={() => setShowMaterialsList(true)}
-              disabled={loading}
-              className={`
-                w-full py-4 rounded-xl font-semibold text-base
-                flex items-center justify-center gap-2
-                transition-all min-h-[48px]
-                ${
-                  loading
-                    ? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                    : "bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white active:scale-95"
-                }
-              `}
-            >
-              <Grid3x3 size={20} />
-              <span>Ver Todos ({allMaterials.length})</span>
-            </button>
-
-            {/* Scanner Component */}
-            {scannerActive && (
-              <Scanner isActive={scannerActive} onScan={handleScan} />
-            )}
-          </div>
-        )}
-
-        {/* Material Details State */}
-        {material && !scannerActive && (
-          <div className="space-y-6 py-6">
-            {/* Quantity Panel */}
-            <QuantityPanel
-              quantity={localQuantity}
-              onQuantityChange={setLocalQuantity}
-            />
-
-            {/* New Scan Button */}
-            <button
-              onClick={handleNewScan}
-              className="
-                w-full py-3 px-4 rounded-xl font-semibold
-                bg-zinc-800 hover:bg-zinc-700
-                text-white transition-all active:scale-95
-                flex items-center justify-center gap-2
-              "
-            >
-              <Barcode size={18} />
-              <span>Escanear Otro</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Product Modal */}
-      {material && (
-        <ProductCard
-          material={material}
-          onClose={handleCloseMaterial}
-          localQuantity={localQuantity}
-        />
-      )}
-
-      {/* Materials List Modal */}
-      {showMaterialsList && (
-        <MaterialsList
-          materials={allMaterials}
-          onSelectMaterial={handleSelectFromList}
-          onClose={() => setShowMaterialsList(false)}
-        />
-      )}
-    </main>
-  );
-}
-
-  return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      {/* Background gradient accent */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <div className="relative px-4 py-6 border-b border-zinc-800 sticky top-0 z-10 bg-zinc-950/95 backdrop-blur">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center">
-                <Barcode size={20} className="text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-white">Cazapiezas</h1>
-                <p className="text-xs text-zinc-500">Stock Manager</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-md mx-auto p-4 pb-12 relative">
-        {/* No Material State */}
-        {!material && (
-          <div className="space-y-6">
-            {/* Logo */}
-            <div className="flex justify-center pt-8 mb-8">
-              <div className="relative">
-                <div className="absolute inset-0 bg-cyan-500/20 blur-2xl rounded-full" />
-                <div className="relative bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
-                  <Barcode size={48} className="text-cyan-400" />
-                </div>
-              </div>
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle
-                  size={20}
-                  className="text-red-400 flex-shrink-0 mt-0.5"
-                />
-                <p className="text-sm text-red-300">{error}</p>
-              </div>
-            )}
-
-            {/* Manual Input */}
-            <div className="space-y-3">
-              <label className="text-xs font-medium text-zinc-400">
-                O ingresa manualmente
+            {/* Manual Search */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 mb-4">
+              <label className="block text-sm font-medium text-zinc-300 mb-3">
+                O busca manualmente:
               </label>
-              <input
-                type="text"
-                value={manualBarcode}
-                onChange={(e) => setManualBarcode(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Código de barras"
-                className="
-                  w-full px-4 py-4 rounded-xl
-                  bg-zinc-900 border-2 border-zinc-800
-                  text-white placeholder-zinc-600
-                  focus:border-cyan-500 focus:outline-none
-                  transition-colors text-base font-medium
-                  min-h-[48px]
-                "
-              />
-              <button
-                onClick={handleManualSearch}
-                disabled={loading || !manualBarcode.trim()}
-                className={`
-                  w-full py-4 rounded-xl font-semibold text-base
-                  transition-all min-h-[48px]
-                  flex items-center justify-center gap-2
-                  ${
-                    loading || !manualBarcode.trim()
-                      ? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                      : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-700 hover:to-cyan-600 text-white active:scale-95"
+
+              {/* Search Type Selector */}
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setSearchType("auto")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    searchType === "auto"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  }`}
+                >
+                  Automático
+                </button>
+                <button
+                  onClick={() => setSearchType("barcode")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    searchType === "barcode"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  }`}
+                >
+                  Por Código
+                </button>
+                <button
+                  onClick={() => setSearchType("reference")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    searchType === "reference"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  }`}
+                >
+                  Por Referencia
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={manualCode}
+                  onChange={(e) => {
+                    setManualCode(e.target.value);
+                    setError("");
+                  }}
+                  onKeyPress={handleKeyPress}
+                  placeholder={
+                    searchType === "reference"
+                      ? "Ej: REF-12345"
+                      : "Ej: 8411564234567"
                   }
-                `}
-              >
-                {loading ? (
-                  <>
-                    <Loader size={20} className="animate-spin" />
-                    <span>Buscando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Barcode size={20} />
-                    <span>Buscar Código</span>
-                  </>
-                )}
-              </button>
+                  className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
+                />
+                <button
+                  onClick={handleManualSearch}
+                  disabled={loading || !manualCode.trim()}
+                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Search className="w-5 h-5" />
+                  )}
+                  Buscar
+                </button>
+              </div>
+
+              {/* Help Text */}
+              <div className="mt-4 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg">
+                <p className="text-xs text-zinc-400">
+                  💡 <strong>Automático:</strong> Busca por código de barras o referencia. <br />
+                  <strong>Por Código:</strong> Solo por código de barras (EAN, UPC). <br />
+                  <strong>Por Referencia:</strong> Solo por referencia del producto.
+                </p>
+              </div>
             </div>
 
-            {/* Divider */}
-            <div className="relative h-px bg-gradient-to-r from-transparent via-zinc-700 to-transparent" />
-
-            {/* Scanner Button */}
+            {/* BOTÓN NUEVO: Ver todos los materiales */}
             <button
-              onClick={() => setScannerActive(true)}
-              disabled={loading || scannerActive}
-              className={`
-                w-full py-3 rounded-xl font-semibold
-                flex items-center justify-center gap-2
-                transition-all
-                ${
-                  scannerActive || loading
-                    ? "bg-zinc-800 text-zinc-600 cursor-not-allowed"
-                    : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-700 hover:to-cyan-600 text-white active:scale-95"
-                }
-              `}
+              onClick={handleOpenMaterialsList}
+              className="w-full mb-8 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-medium transition-all group"
             >
-              {scannerActive ? (
-                <>
-                  <Loader size={18} className="animate-spin" />
-                  <span>Escaneando...</span>
-                </>
-              ) : (
-                <>
-                  <Barcode size={18} />
-                  <span>Escanear Código de Barras</span>
-                </>
-              )}
+              <List className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
+              Ver catálogo completo ({cacheItemCount} artículos)
             </button>
+          </>
+        )}
 
-            {/* Scanner Component */}
-            {scannerActive && (
-              <Scanner isActive={scannerActive} onScan={handleScan} />
-            )}
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 mb-8 flex gap-3">
+            <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-red-400 font-medium">Error en la búsqueda</p>
+              <p className="text-red-300 text-sm mt-1">{error}</p>
+            </div>
           </div>
         )}
 
-        {/* Material Details State */}
-        {material && !scannerActive && (
-          <div className="space-y-6 py-6">
-            {/* Quantity Panel */}
-            <QuantityPanel
-              quantity={localQuantity}
-              onQuantityChange={setLocalQuantity}
-            />
+        {/* Success Message */}
+        {success && (
+          <div className="bg-green-900/20 border border-green-800 rounded-xl p-4 mb-8 flex gap-3">
+            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            <p className="text-green-300 text-sm">{success}</p>
+          </div>
+        )}
 
-            {/* New Scan Button */}
-            <button
-              onClick={handleNewScan}
-              className="
-                w-full py-3 px-4 rounded-xl font-semibold
-                bg-zinc-800 hover:bg-zinc-700
-                text-white transition-all active:scale-95
-                flex items-center justify-center gap-2
-              "
-            >
-              <Barcode size={18} />
-              <span>Escanear Otro</span>
-            </button>
+        {/* Loading State */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-red-400 animate-spin mb-3" />
+            <p className="text-zinc-400">Buscando en {cacheItemCount} materiales...</p>
+          </div>
+        )}
+
+        {/* Product Card - Modal de edición */}
+        {selectedMaterial && !loading && (
+          <ProductCard
+            material={selectedMaterial}
+            onClose={() => setSelectedMaterial(null)}
+          />
+        )}
+
+        {/* Listado Completo de Materiales - Modal */}
+        {showMaterialsList && (
+          <MaterialsList
+            materials={allMaterials}
+            onClose={() => setShowMaterialsList(false)}
+            onSelectMaterial={(material) => {
+              setSelectedMaterial(material); // Abrimos la tarjeta del producto
+              setShowMaterialsList(false); // Cerramos la lista
+            }}
+          />
+        )}
+
+        {/* Empty State */}
+        {!selectedMaterial && !loading && cacheReady && !showMaterialsList && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <p className="text-zinc-400">
+              Scanea un código de barras, busca manualmente o abre el catálogo.
+            </p>
           </div>
         )}
       </div>
-
-      {/* Product Modal */}
-      {material && (
-        <ProductCard
-          material={material}
-          onClose={handleCloseMaterial}
-          localQuantity={localQuantity}
-        />
-      )}
     </main>
   );
 }

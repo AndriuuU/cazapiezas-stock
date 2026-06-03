@@ -32,7 +32,7 @@ export default function QuantityPanel({
     }
   };
 
-  const isAtMax = maxQuantity && quantity >= maxQuantity;
+  const isAtMax = maxQuantity !== undefined && quantity >= maxQuantity;
   const isAtMin = quantity <= 0;
 
   return (

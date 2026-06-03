@@ -1,30 +1,42 @@
-// src/types/material.ts
-
-export interface StockMovement {
-  id: string;
-  movement_date: string;
-  quantity: number;
-  entry_id: string | null;
-  sales_delivery_note_id: string | null;
-  invoice_id: string | null;
-  ticket_id: string | null;
-  purchase_delivery_note_id: string | null;
-  description: string | null;
-}
-
 export interface Material {
   material_id: string;
   reference: string;
-  serial_number: string | null;
   name: string;
+  description?: string;
+  barcode?: string; // Código de barras EAN-13
+  ean?: string; // Código EAN (puede ser igual a barcode)
+  serial_number?: string; // Número de serie
   quantity: number;
-  cost: number;
-  pvp: number;
-  alert_threshold: number | null;
-  discount1: number;
-  discount2: number;
-  margin: number;
-  tax_rate: number;
-  stock_movements: StockMovement[];
-  photos: string[];
+  unit?: string;
+  pvp?: number; // Precio de venta al público
+  cost?: number; // Coste
+  iva?: number; // IVA
+  photos?: Photo[];
+  stock_movements?: StockMovement[];
+  created_at?: string;
+  updated_at?: string;
+  // Campos adicionales que tu API pueda tener
+  [key: string]: any;
+}
+
+export interface Photo {
+  id: string;
+  url: string;
+  thumbnail?: string;
+}
+
+export interface StockMovement {
+  id: string;
+  type: "entrada" | "salida" | "ajuste" | "inventario";
+  quantity: number;
+  reason?: string;
+  date: string;
+  created_by?: string;
+  notes?: string;
+}
+
+export interface SearchResult {
+  material: Material;
+  matchType: "barcode" | "reference" | "serial" | "ean" | "name" | "description";
+  confidence: "exact" | "partial";
 }

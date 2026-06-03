@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Permite conexiones desde tu red local (el móvil)
+  allowedDevOrigins: [
+    "192.168.1.35",
+    "localhost"
+  ],
 };
 
 export default nextConfig;
