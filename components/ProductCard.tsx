@@ -1,9 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import axios from "axios";
-import { DollarSign, Loader2, Package, TrendingUp, X } from "lucide-react";
-import { updateMaterialQuantityInCache } from "@/services/cache";
+import {
+  DollarSign,
+  Eye,
+  EyeOff,
+  ImageIcon,
+  Loader2,
+  Package,
+  TrendingUp,
+  X,
+} from "lucide-react";
+import {
+  getMaterialDetails,
+  updateMaterialQuantityInCache,
+} from "@/services/cache";
 import { Material } from "@/types/material";
 import QuantityPanel from "./QuantityPanel";
 
@@ -16,6 +29,10 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
   const [editedQuantity, setEditedQuantity] = useState(material.quantity);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [showImage, setShowImage] = useState(false);
+  const [imageUrl, setImageUrl] = useState(material.photos?.[0]?.url || "");
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState("");
 
   const quantityDifference = editedQuantity - material.quantity;
   const hasChanged = quantityDifference !== 0;
@@ -48,6 +65,42 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
       setSaveError(`No se pudo guardar en TallerGP: ${message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleImage = async () => {
+    if (showImage) {
+      setShowImage(false);
+      return;
+    }
+
+    setShowImage(true);
+
+    if (imageUrl || imageLoading) {
+      return;
+    }
+
+    setImageLoading(true);
+    setImageError("");
+
+    try {
+      const materialDetails = await getMaterialDetails(material.material_id);
+      const nextImageUrl = materialDetails.photos?.[0]?.url || "";
+
+      if (!nextImageUrl) {
+        setImageError("Este producto no tiene imagen guardada.");
+        return;
+      }
+
+      setImageUrl(nextImageUrl);
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : "Error desconocido";
+
+      setImageError(`No se pudo cargar la imagen: ${message}`);
+    } finally {
+      setImageLoading(false);
     }
   };
 
@@ -117,7 +170,42 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
               {saveError}
             </div>
           )}
+<div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
+            <button
+              onClick={handleToggleImage}
+              className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              {showImage ? <EyeOff size={18} /> : <Eye size={18} />}
+              {showImage ? "Ocultar imagen" : "Mostrar imagen"}
+            </button>
 
+            {showImage && (
+              <div className="mt-4">
+                {imageLoading ? (
+                  <div className="aspect-[4/3] rounded-xl border border-zinc-700 bg-zinc-950 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+                  </div>
+                ) : imageUrl ? (
+                  <div className="relative h-[420px] w-full overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950">
+                    <Image
+                      src={imageUrl}
+                      alt={material.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 512px"
+                      className="object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="aspect-[4/3] rounded-xl border border-zinc-700 bg-zinc-950 flex flex-col items-center justify-center gap-2 text-zinc-400">
+                    <ImageIcon className="h-8 w-8" />
+                    <span className="text-sm">
+                      {imageError || "Sin imagen disponible"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="bg-gradient-to-br from-amber-500/20 to-amber-500/5 rounded-xl p-4 border border-amber-500/30">
             <div className="flex items-center gap-2 mb-4">
               <DollarSign size={16} className="text-amber-400" />
@@ -144,6 +232,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
             </div>
           </div>
         </div>
+        
 
         <div className="sticky bottom-0 bg-gradient-to-t from-zinc-900 to-zinc-900 p-4 border-t border-zinc-700">
           <button
