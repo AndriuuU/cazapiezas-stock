@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Check, Clipboard, Loader2, Package, RefreshCw } from "lucide-react";
+import { Check, Clipboard, Loader2, Package, RefreshCw, Bell } from "lucide-react";
 
 interface Adjustment {
   id: string;
@@ -18,6 +18,16 @@ interface Adjustment {
 export default function AdminPanel() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estado para la notificación flotante (Toast)
+  const [notification, setNotification] = useState<string | null>(null);
+
+  const triggerNotification = (message: string) => {
+    setNotification(message);
+    setTimeout(() => {
+      setNotification(null);
+    }, 3000); // Desaparece a los 3 segundos
+  };
 
   const fetchAdjustments = async () => {
     setLoading(true);
@@ -31,14 +41,20 @@ export default function AdminPanel() {
     }
   };
 
-  const markAsCompleted = async (id: string) => {
+  const markAsCompleted = async (id: string, articleName: string) => {
     try {
       await axios.put("/api/adjustments", { id, status: "completed" });
-      // Filtrar del estado local para que desaparezca visualmente
       setAdjustments(adjustments.filter((item) => item.id !== id));
+      triggerNotification(`✓ "${articleName}" marcado como procesado con éxito.`);
     } catch (err) {
       console.error("Error updating status:", err);
+      triggerNotification("❌ Error al procesar el ajuste.");
     }
+  };
+
+  const handleCopyReference = (reference: string) => {
+    navigator.clipboard.writeText(reference);
+    triggerNotification(`📋 Referencia "${reference}" copiada al portapapeles.`);
   };
 
   useEffect(() => {
@@ -46,7 +62,16 @@ export default function AdminPanel() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-12">
+    <div className="min-screen bg-zinc-950 text-zinc-100 p-6 md:p-12 relative">
+      
+      {/* NOTIFICACIÓN FLOTANTE (TOAST) */}
+      {notification && (
+        <div className="fixed top-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 flex items-center gap-3 animate-fade-in animate-pulse-slow">
+          <Bell size={18} className="text-red-500" />
+          <span className="text-sm font-medium">{notification}</span>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -68,7 +93,7 @@ export default function AdminPanel() {
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+            <Loader2 className="w-10 h-10 text-red-500 animate-spin" />
           </div>
         ) : adjustments.length === 0 ? (
           <div className="text-center py-16 bg-zinc-900 rounded-2xl border border-zinc-800">
@@ -93,11 +118,11 @@ export default function AdminPanel() {
                     <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-cyan-400 font-bold border border-zinc-800 flex items-center gap-1">
+                          <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-red-400 font-bold border border-zinc-800 flex items-center gap-1">
                             {item.reference}
                             <button 
-                              onClick={() => navigator.clipboard.writeText(item.reference)}
-                              className="hover:text-white p-0.5" 
+                              onClick={() => handleCopyReference(item.reference)}
+                              className="hover:text-white p-0.5 transition-colors" 
                               title="Copiar Referencia"
                             >
                               <Clipboard size={12} />
@@ -123,13 +148,13 @@ export default function AdminPanel() {
                               : "bg-red-500/10 text-red-400 border border-red-500/20"
                           }`}
                         >
-                          {item.difference > 0 ? `Sumar +${item.difference}` : `Restar ${item.difference}`}
+                          {item.difference > 0 ? `Sumar +${item.difference}` : `Restar ${Math.abs(item.difference)}`}
                         </span>
                       </td>
                       <td className="p-4 text-right">
                         <button
-                          onClick={() => markAsCompleted(item.id)}
-                          className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold rounded-lg shadow-md hover:shadow-emerald-900/30 transition-all flex items-center gap-1 ml-auto"
+                          onClick={() => markAsCompleted(item.id, item.name)}
+                          className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-semibold rounded-lg shadow-md transition-all flex items-center gap-1 ml-auto active:scale-95"
                         >
                           <Check size={16} />
                           Procesado
