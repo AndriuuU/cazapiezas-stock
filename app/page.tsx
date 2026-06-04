@@ -6,9 +6,10 @@ import { Material } from "@/types/material";
 import Scanner from "@/components/Scanner";
 import ProductCard from "@/components/ProductCard";
 import CacheLoader from "@/components/CacheLoader";
+import NewProductForm from "@/components/NewProductForm";
 import MaterialsList from "@/components/MaterialsList";
 import { getCacheInfo, getAllMaterialsFromCache } from "@/services/cache";
-import { Search, AlertCircle, Loader2, CheckCircle, List } from "lucide-react";
+import { Search, AlertCircle, Loader2, CheckCircle, List, PackagePlus } from "lucide-react";
 import Logo from "@/components/Logo";
 
 export default function Home() {
@@ -24,13 +25,16 @@ export default function Home() {
 
   // Estados nuevos para la lista completa de materiales
   const [showMaterialsList, setShowMaterialsList] = useState(false);
+  const [showNewProductForm, setShowNewProductForm] = useState(false);
   const [allMaterials, setAllMaterials] = useState<Material[]>([]);
 
   // Verificar si el caché está listo
   useEffect(() => {
-    const info = getCacheInfo();
-    setCacheReady(info.itemCount > 0);
-    setCacheItemCount(info.itemCount);
+    void Promise.resolve().then(() => {
+      const info = getCacheInfo();
+      setCacheReady(info.itemCount > 0);
+      setCacheItemCount(info.itemCount);
+    });
   }, []);
 
   const handleCacheLoaded = useCallback((count: number) => {
@@ -130,12 +134,9 @@ export default function Home() {
           <Logo size={56} />
         </div>
 
-        {/* Cache Loader Component */}
-        {!cacheReady && (
-          <div className="mb-8">
-            <CacheLoader onCacheLoaded={handleCacheLoaded} />
-          </div>
-        )}
+        <div className="mb-6">
+          <CacheLoader onCacheLoaded={handleCacheLoaded} />
+        </div>
 
         {/* Cache Ready Indicator */}
         {cacheReady && (
@@ -145,6 +146,16 @@ export default function Home() {
               ✓ Caché listo - {cacheItemCount} materiales cargados (búsqueda offline)
             </p>
           </div>
+        )}
+
+        {!cacheReady && (
+          <button
+            onClick={() => setShowNewProductForm(true)}
+            className="w-full mb-8 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-medium transition-all group"
+          >
+            <PackagePlus className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+            Registrar producto
+          </button>
         )}
 
         {/* Scanner & Manual Search */}
@@ -239,14 +250,22 @@ export default function Home() {
               </div>
             </div>
 
-            {/* BOTÓN NUEVO: Ver todos los materiales */}
-            <button
-              onClick={handleOpenMaterialsList}
-              className="w-full mb-8 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-medium transition-all group"
-            >
-              <List className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
-              Ver catálogo completo ({cacheItemCount} artículos)
-            </button>
+            <div className="grid gap-3 mb-8 md:grid-cols-2">
+              <button
+                onClick={handleOpenMaterialsList}
+                className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-medium transition-all group"
+              >
+                <List className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
+                Ver catálogo ({cacheItemCount})
+              </button>
+              <button
+                onClick={() => setShowNewProductForm(true)}
+                className="w-full py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-medium transition-all group"
+              >
+                <PackagePlus className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                Registrar producto
+              </button>
+            </div>
           </>
         )}
 
@@ -293,6 +312,17 @@ export default function Home() {
             onSelectMaterial={(material) => {
               setSelectedMaterial(material); // Abrimos la tarjeta del producto
               setShowMaterialsList(false); // Cerramos la lista
+            }}
+          />
+        )}
+
+        {showNewProductForm && (
+          <NewProductForm
+            onClose={() => setShowNewProductForm(false)}
+            onProductCreated={(count) => {
+              setCacheReady(true);
+              setCacheItemCount(count);
+              setSuccess("Producto registrado y catálogo actualizado");
             }}
           />
         )}
