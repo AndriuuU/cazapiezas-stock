@@ -167,7 +167,9 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
     }
   }, [onError, onScan, playBeep, stopCamera]);
 
-  const handleToggleScanner = () => {
+  const handleToggleScanner = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+
     if (isScanning || cameraStatus === "loading") {
       stopCamera();
       return;
@@ -232,6 +234,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
 
       <div className="flex gap-3">
         <button
+          type="button"
           onClick={handleToggleScanner}
           className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-all ${
             isScanning || cameraStatus === "loading"
