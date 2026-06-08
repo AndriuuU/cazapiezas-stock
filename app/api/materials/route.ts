@@ -1,5 +1,6 @@
 import axios from "axios";
 import { NextResponse } from "next/server";
+import { getSupabaseRestConfig } from "@/lib/supabase";
 
 const tallergpClient = axios.create({
   baseURL: process.env.TALLERGP_URL || process.env.NEXT_PUBLIC_TALLERGP_URL,
@@ -11,6 +12,8 @@ const tallergpClient = axios.create({
   },
 });
 
+const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
+
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     return (
@@ -21,6 +24,49 @@ function getErrorMessage(error: unknown) {
   }
 
   return error instanceof Error ? error.message : "Error desconocido";
+}
+
+async function registerProductCreatedEvent(material: {
+  material_id?: string;
+  reference: string;
+  name: string;
+  quantity: number;
+}) {
+  const { url, anonKey } = getSupabaseRestConfig();
+
+  const insertEvent = async (status: string, name: string) => {
+    const response = await fetch(`${url}/rest/v1/stock_adjustments?select=*`, {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify({
+        material_id: material.material_id || material.reference,
+        reference: material.reference,
+        name,
+        quantity_before: 0,
+        quantity_after: material.quantity,
+        difference: material.quantity,
+        status,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => null);
+      throw new Error(errorBody?.message || `Supabase error ${response.status}`);
+    }
+
+    return response.json();
+  };
+
+  try {
+    return await insertEvent("created", material.name);
+  } catch {
+    return insertEvent("completed", `${PRODUCT_CREATED_PREFIX}${material.name}`);
+  }
 }
 
 export async function POST(request: Request) {
@@ -48,8 +94,27 @@ export async function POST(request: Request) {
     };
 
     const response = await tallergpClient.post("/materials", payload);
+    const createdMaterial = response.data || {};
+    let historyWarning: string | undefined;
 
-    return NextResponse.json(response.data, { status: 201 });
+    try {
+      await registerProductCreatedEvent({
+        material_id: createdMaterial.material_id,
+        reference: createdMaterial.reference || reference,
+        name: createdMaterial.name || createdMaterial.description || description,
+        quantity: Number(createdMaterial.quantity ?? payload.quantity),
+      });
+    } catch (historyError) {
+      historyWarning = getErrorMessage(historyError);
+    }
+
+    return NextResponse.json(
+      {
+        ...response.data,
+        history_warning: historyWarning,
+      },
+      { status: 201 }
+    );
   } catch (error: unknown) {
     const status = axios.isAxiosError(error) ? error.response?.status || 502 : 500;
 

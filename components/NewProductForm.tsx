@@ -2,8 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import axios from "axios";
-import { AlertCircle, Loader2, PackagePlus, Save, X } from "lucide-react";
+import { AlertCircle, Camera, Loader2, PackagePlus, Save, X } from "lucide-react";
 import { loadAllMaterials } from "@/services/cache";
+import Scanner from "./Scanner";
 
 interface NewProductFormProps {
   onClose: () => void;
@@ -38,11 +39,17 @@ export default function NewProductForm({
 }: NewProductFormProps) {
   const [form, setForm] = useState<ProductFormState>(initialFormState);
   const [saving, setSaving] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [error, setError] = useState("");
 
   const updateField = (field: keyof ProductFormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
     setError("");
+  };
+
+  const handleBarcodeScan = (code: string) => {
+    updateField("serial_number", code);
+    setShowScanner(false);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -119,16 +126,48 @@ export default function NewProductForm({
               <span className="text-sm font-medium text-zinc-300">
                 Codigo de barras
               </span>
-              <input
-                value={form.serial_number}
-                onChange={(event) =>
-                  updateField("serial_number", event.target.value)
-                }
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
-                placeholder="3374650294490"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={form.serial_number}
+                  onChange={(event) =>
+                    updateField("serial_number", event.target.value)
+                  }
+                  className="min-w-0 flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
+                  placeholder="3374650294490"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowScanner((current) => !current)}
+                  className={`px-4 py-3 rounded-xl border transition-all flex items-center justify-center ${
+                    showScanner
+                      ? "bg-red-500 text-white border-red-500"
+                      : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-white"
+                  }`}
+                  title="Escanear codigo de barras"
+                >
+                  <Camera className="h-5 w-5" />
+                </button>
+              </div>
             </label>
           </div>
+
+          {showScanner && (
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-950/50 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-zinc-300">
+                  Escanear codigo de barras
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowScanner(false)}
+                  className="text-sm text-zinc-400 hover:text-white"
+                >
+                  Cerrar
+                </button>
+              </div>
+              <Scanner onScan={handleBarcodeScan} />
+            </div>
+          )}
 
           <label className="space-y-2 block">
             <span className="text-sm font-medium text-zinc-300">
@@ -197,7 +236,7 @@ export default function NewProductForm({
             </label>
 
             <label className="space-y-2">
-              <span className="text-sm font-medium text-zinc-300">PVP</span>
+              <span className="text-sm font-medium text-zinc-300">PVP sin IVA</span>
               <input
                 type="number"
                 min="0"
