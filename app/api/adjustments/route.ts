@@ -12,6 +12,9 @@ interface StockAdjustment {
   status: string;
 }
 
+const EMPLOYEES_REFERENCE = "__EMPLOYEES__";
+const EMPLOYEE_PREFIX = "[EMPLEADO: ";
+
 const tallergpClient = axios.create({
   baseURL: process.env.TALLERGP_URL || process.env.NEXT_PUBLIC_TALLERGP_URL,
   headers: {
@@ -80,7 +83,7 @@ async function insertAdjustment(adjustment: StockAdjustment) {
 
 async function getLatestAdjustments() {
   return requestSupabase<StockAdjustment[]>(
-    "stock_adjustments?select=*&order=created_at.desc&limit=100"
+    `stock_adjustments?select=*&reference=neq.${EMPLOYEES_REFERENCE}&order=created_at.desc&limit=100`
   );
 }
 
@@ -101,13 +104,28 @@ async function updateAdjustmentStatus(id: string, status: string) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { material_id, reference, name, quantity_before, quantity_after } = body;
+    const {
+      material_id,
+      reference,
+      name,
+      quantity_before,
+      quantity_after,
+      employee_name,
+    } = body;
     const nextQuantity = Number(quantity_after);
     const previousQuantity = Number(quantity_before);
+    const employeeName = String(employee_name || "").trim();
 
     if (!material_id || !Number.isFinite(nextQuantity) || nextQuantity < 0) {
       return NextResponse.json(
         { error: "Datos de stock invalidos" },
+        { status: 400 }
+      );
+    }
+
+    if (!employeeName) {
+      return NextResponse.json(
+        { error: "Selecciona quien ha cogido el material" },
         { status: 400 }
       );
     }
@@ -131,7 +149,7 @@ export async function POST(request: Request) {
     const data = await insertAdjustment({
       material_id,
       reference,
-      name,
+      name: `${EMPLOYEE_PREFIX}${employeeName}] ${name}`,
       quantity_before: previousQuantity,
       quantity_after: nextQuantity,
       difference,

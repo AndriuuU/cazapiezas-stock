@@ -9,7 +9,10 @@ import {
   Loader2,
   Package,
   PackagePlus,
+  Save,
   RefreshCw,
+  Trash2,
+  UserPlus,
 } from "lucide-react";
 
 interface Adjustment {
@@ -27,19 +30,36 @@ interface Adjustment {
 type ActivityFilter = "all" | "stock" | "products" | "pending";
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
+const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
 
 export default function AdminPanel() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const [employees, setEmployees] = useState<string[]>([]);
+  const [newEmployee, setNewEmployee] = useState("");
+  const [savingEmployees, setSavingEmployees] = useState(false);
+  const [employeeError, setEmployeeError] = useState("");
 
-  const isProductCreated = (item: Adjustment) =>
-    item.status === "created" || item.name?.startsWith(PRODUCT_CREATED_PREFIX);
+  const isProductCreated = useCallback(
+    (item: Adjustment) =>
+      item.status === "created" || item.name?.startsWith(PRODUCT_CREATED_PREFIX),
+    []
+  );
 
-  const getDisplayName = (item: Adjustment) =>
-    item.name?.startsWith(PRODUCT_CREATED_PREFIX)
+  const getEmployeeName = useCallback((item: Adjustment) => {
+    const match = item.name?.match(EMPLOYEE_PREFIX_PATTERN);
+
+    return match?.[1] || "";
+  }, []);
+
+  const getDisplayName = useCallback((item: Adjustment) => {
+    const withoutProductPrefix = item.name?.startsWith(PRODUCT_CREATED_PREFIX)
       ? item.name.slice(PRODUCT_CREATED_PREFIX.length)
       : item.name;
+
+    return withoutProductPrefix?.replace(EMPLOYEE_PREFIX_PATTERN, "") || "";
+  }, []);
 
   const filteredAdjustments = useMemo(() => {
     if (filter === "products") {
@@ -55,7 +75,7 @@ export default function AdminPanel() {
     }
 
     return adjustments;
-  }, [adjustments, filter]);
+  }, [adjustments, filter, isProductCreated]);
 
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
@@ -68,6 +88,57 @@ export default function AdminPanel() {
       setLoading(false);
     }
   }, []);
+
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const response = await axios.get("/api/employees");
+      setEmployees(Array.isArray(response.data.employees) ? response.data.employees : []);
+    } catch (err) {
+      console.error("Error fetching employees:", err);
+    }
+  }, []);
+
+  const addEmployee = () => {
+    const employee = newEmployee.trim();
+
+    if (!employee) {
+      return;
+    }
+
+    setEmployees((current) =>
+      current.includes(employee) ? current : [...current, employee]
+    );
+    setNewEmployee("");
+    setEmployeeError("");
+  };
+
+  const removeEmployee = (employee: string) => {
+    setEmployees((current) => current.filter((item) => item !== employee));
+    setEmployeeError("");
+  };
+
+  const saveEmployees = async () => {
+    if (employees.length === 0) {
+      setEmployeeError("Añade al menos un empleado.");
+      return;
+    }
+
+    setSavingEmployees(true);
+    setEmployeeError("");
+
+    try {
+      const response = await axios.post("/api/employees", { employees });
+      setEmployees(response.data.employees);
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.message
+        : "Error desconocido";
+
+      setEmployeeError(`No se pudieron guardar los empleados: ${message}`);
+    } finally {
+      setSavingEmployees(false);
+    }
+  };
 
   const markAsCompleted = async (id: string) => {
     try {
@@ -84,7 +155,8 @@ export default function AdminPanel() {
 
   useEffect(() => {
     void Promise.resolve().then(fetchAdjustments);
-  }, [fetchAdjustments]);
+    void Promise.resolve().then(fetchEmployees);
+  }, [fetchAdjustments, fetchEmployees]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-12">
@@ -105,6 +177,75 @@ export default function AdminPanel() {
             <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
             Actualizar
           </button>
+        </div>
+
+        <div className="mb-6 bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-white">Empleados</h2>
+              <p className="text-sm text-zinc-400">
+                Estos nombres aparecen en el selector de la ficha de producto.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={newEmployee}
+                onChange={(event) => setNewEmployee(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addEmployee();
+                  }
+                }}
+                placeholder="Nombre"
+                className="min-w-0 px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-red-500"
+              />
+              <button
+                type="button"
+                onClick={addEmployee}
+                className="px-4 py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-white flex items-center gap-2"
+              >
+                <UserPlus size={18} />
+                Añadir
+              </button>
+              <button
+                type="button"
+                onClick={saveEmployees}
+                disabled={savingEmployees}
+                className="px-4 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-xl text-white font-semibold flex items-center gap-2"
+              >
+                {savingEmployees ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Save size={18} />
+                )}
+                Guardar
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {employees.map((employee) => (
+              <span
+                key={employee}
+                className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1 text-sm text-zinc-200"
+              >
+                {employee}
+                <button
+                  type="button"
+                  onClick={() => removeEmployee(employee)}
+                  className="text-zinc-500 hover:text-red-400"
+                  title="Eliminar empleado"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          {employeeError && (
+            <p className="mt-3 text-sm text-red-300">{employeeError}</p>
+          )}
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
@@ -146,6 +287,7 @@ export default function AdminPanel() {
                 <thead>
                   <tr className="bg-zinc-800/50 border-b border-zinc-700 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                     <th className="p-4">Referencia / Articulo</th>
+                    <th className="p-4">Empleado</th>
                     <th className="p-4 text-center">Antes</th>
                     <th className="p-4 text-center">Despues</th>
                     <th className="p-4 text-center">Actividad</th>
@@ -174,6 +316,9 @@ export default function AdminPanel() {
                         <span className="text-[10px] text-zinc-500">
                           {new Date(item.created_at).toLocaleString()}
                         </span>
+                      </td>
+                      <td className="p-4 text-zinc-300">
+                        {isProductCreated(item) ? "-" : getEmployeeName(item) || "-"}
                       </td>
                       <td className="p-4 text-center text-zinc-400 font-medium">
                         {isProductCreated(item) ? "-" : `${item.quantity_before} u`}
