@@ -15,6 +15,7 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
+import Logo from "@/components/Logo";
 
 interface Adjustment {
   id: string;
@@ -170,7 +171,7 @@ export default function AdminPanel() {
       return {
         Fecha: new Date(item.created_at).toLocaleString(),
         Referencia: item.reference,
-        Articulo: getDisplayName(item),
+        Artículo: getDisplayName(item),
         Empleado: isCreated ? "" : getEmployeeName(item),
         "Stock anterior": isCreated ? "" : item.quantity_before,
         "Stock despues": item.quantity_after,
@@ -191,7 +192,7 @@ export default function AdminPanel() {
     const headers = [
       "Fecha",
       "Referencia",
-      "Articulo",
+      "Artículo",
       "Empleado",
       "Stock anterior",
       "Stock despues",
@@ -249,13 +250,16 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-12">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-8">
-          <div>
+          <div className="flex items-center gap-4">
+            <Logo iconOnly size={52} />
+            <div>
             <h1 className="text-3xl font-bold tracking-tight text-white">
-              Ultima actividad
+              Última actividad
             </h1>
             <p className="text-sm text-zinc-400 mt-1">
               Cambios de stock y productos registrados desde la app.
             </p>
+            </div>
           </div>
           <button
             onClick={fetchAdjustments}
@@ -384,10 +388,10 @@ export default function AdminPanel() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-zinc-800/50 border-b border-zinc-700 text-xs font-semibold text-zinc-400 uppercase tracking-wider">
-                    <th className="p-4">Referencia / Articulo</th>
+                    <th className="p-4">Referencia / Artículo</th>
                     <th className="p-4">Empleado</th>
                     <th className="p-4 text-center">Antes</th>
-                    <th className="p-4 text-center">Despues</th>
+                    <th className="p-4 text-center">Después</th>
                     <th className="p-4 text-center">Actividad</th>
                     <th className="p-4 text-right">Estado</th>
                   </tr>

@@ -125,7 +125,7 @@ export default function QuantityPanel({
 
       {/* Info text */}
       <p className="text-xs text-zinc-500 mt-4 text-center">
-        Nota: se guardara el stock total en TallerGP al cerrar.
+        Nota: se guardará el stock total en TallerGP al cerrar.
       </p>
     </div>
   );

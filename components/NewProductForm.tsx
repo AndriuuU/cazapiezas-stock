@@ -56,7 +56,7 @@ export default function NewProductForm({
     event.preventDefault();
 
     if (!form.reference.trim() || !form.description.trim()) {
-      setError("Referencia y descripcion son obligatorias.");
+      setError("Referencia y descripción son obligatorias.");
       return;
     }
 
@@ -124,7 +124,7 @@ export default function NewProductForm({
 
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-300">
-                Codigo de barras
+                Código de barras
               </span>
               <div className="flex gap-2">
                 <input
@@ -143,7 +143,7 @@ export default function NewProductForm({
                       ? "bg-red-500 text-white border-red-500"
                       : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-white"
                   }`}
-                  title="Escanear codigo de barras"
+                  title="Escanear código de barras"
                 >
                   <Camera className="h-5 w-5" />
                 </button>
@@ -155,7 +155,7 @@ export default function NewProductForm({
             <div className="rounded-2xl border border-zinc-700 bg-zinc-950/50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-zinc-300">
-                  Escanear codigo de barras
+                  Escanear código de barras
                 </p>
                 <button
                   type="button"
@@ -170,8 +170,8 @@ export default function NewProductForm({
           )}
 
           <label className="space-y-2 block">
-            <span className="text-sm font-medium text-zinc-300">
-              Nombre o descripcion
+              <span className="text-sm font-medium text-zinc-300">
+              Nombre o descripción
             </span>
             <input
               value={form.description}

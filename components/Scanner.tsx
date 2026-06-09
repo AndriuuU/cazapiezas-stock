@@ -17,7 +17,7 @@ type CameraStatus = "idle" | "loading" | "granted" | "denied";
 function getCameraErrorMessage(error: unknown) {
   if (error instanceof Error) {
     if (error.message === "SecureContextError") {
-      return "El navegador bloqueo la camara por seguridad. Requiere HTTPS o localhost.";
+      return "El navegador bloqueó la cámara por seguridad. Requiere HTTPS o localhost.";
     }
 
     if (
@@ -25,11 +25,11 @@ function getCameraErrorMessage(error: unknown) {
       error.message === "NotFoundError" ||
       error.message.includes("Requested device")
     ) {
-      return "No se ha detectado ninguna camara en este dispositivo.";
+      return "No se ha detectado ninguna cámara en este dispositivo.";
     }
   }
 
-  return "No se puede acceder a la camara. Verifica los permisos en tu navegador.";
+  return "No se puede acceder a la cámara. Verifica los permisos en tu navegador.";
 }
 
 export default function Scanner({ onScan, onError }: ScannerProps) {
@@ -148,6 +148,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
               lastScanTimeRef.current = now;
               lastScannedCodeRef.current = scannedCode;
               setLastScannedCode(scannedCode);
+              navigator.vibrate?.([90, 40, 90]);
               playBeep();
               onScan(scannedCode);
             }
@@ -190,7 +191,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
             <div className="text-center px-6">
               <Camera className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
               <p className="text-zinc-400 text-sm">
-                Pulsa iniciar escaneo para activar la camara.
+                Pulsa iniciar escaneo para activar la cámara.
               </p>
             </div>
           </div>
@@ -200,7 +201,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/80 backdrop-blur">
             <div className="text-center">
               <Loader2 className="w-8 h-8 text-red-400 animate-spin mx-auto mb-2" />
-              <p className="text-zinc-400 text-sm">Accediendo a la camara...</p>
+              <p className="text-zinc-400 text-sm">Accediendo a la cámara...</p>
             </div>
           </div>
         )}
@@ -236,7 +237,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
         <button
           type="button"
           onClick={handleToggleScanner}
-          className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-all ${
+          className={`flex-1 min-h-14 py-4 px-5 rounded-xl text-base font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 ${
             isScanning || cameraStatus === "loading"
               ? "bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/50"
               : "bg-gradient-to-r from-red-500 to-red-800 hover:shadow-lg hover:shadow-red-500/50 text-white"
@@ -263,8 +264,8 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
       <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3">
         <p className="text-xs text-zinc-400">
           {isScanning
-            ? "Escaneo activo - Apunta el codigo de barras a la camara"
-            : "Escaneo inactivo - Presiona el boton para comenzar"}
+            ? "Escaneo activo - Apunta el código de barras a la cámara"
+            : "Escaneo inactivo - Presiona el botón para comenzar"}
         </p>
       </div>
     </div>

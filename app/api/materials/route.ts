@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     if (!reference || !description) {
       return NextResponse.json(
-        { error: "Referencia y descripcion son obligatorias" },
+        { error: "Referencia y descripción son obligatorias" },
         { status: 400 }
       );
     }

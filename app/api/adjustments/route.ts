@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 
     if (!employeeName) {
       return NextResponse.json(
-        { error: "Selecciona quien ha cogido el material" },
+        { error: "Selecciona quién ha cogido el material" },
         { status: 400 }
       );
     }

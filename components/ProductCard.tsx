@@ -23,9 +23,10 @@ import QuantityPanel from "./QuantityPanel";
 interface ProductCardProps {
   material: Material;
   onClose: () => void;
+  onSaved?: (message: string) => void;
 }
 
-export default function ProductCard({ material, onClose }: ProductCardProps) {
+export default function ProductCard({ material, onClose, onSaved }: ProductCardProps) {
   const [editedQuantity, setEditedQuantity] = useState(material.quantity);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -35,6 +36,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
   const [imageError, setImageError] = useState("");
   const [employees, setEmployees] = useState<string[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
 
   const quantityDifference = editedQuantity - material.quantity;
   const hasChanged = quantityDifference !== 0;
@@ -77,7 +79,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
     }
 
     if (!selectedEmployee) {
-      setSaveError("Selecciona quien ha cogido el material.");
+      setSaveError("Selecciona quién ha cogido el material.");
       return;
     }
 
@@ -95,7 +97,10 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
       });
 
       updateMaterialQuantityInCache(material.material_id, editedQuantity);
-      onClose();
+      const message = `Stock guardado en TallerGP por ${selectedEmployee}`;
+      setSaveSuccess(message);
+      onSaved?.(message);
+      window.setTimeout(onClose, 650);
     } catch (err) {
       const message = axios.isAxiosError(err)
         ? err.response?.data?.error || err.message
@@ -167,7 +172,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
         <div className="p-6 space-y-6">
           {material.serial_number && (
             <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
-              <p className="text-xs text-zinc-500 mb-2">Codigo de barras</p>
+              <p className="text-xs text-zinc-500 mb-2">Código de barras</p>
               <p className="text-lg font-mono font-bold text-red-400 break-all">
                 {material.serial_number}
               </p>
@@ -193,7 +198,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
                 <TrendingUp size={16} />
                 <span>
                   {quantityDifference > 0 ? "+" : ""}
-                  {quantityDifference} (se guardara en TallerGP)
+                  {quantityDifference} (se guardará en TallerGP)
                 </span>
               </div>
             )}
@@ -206,7 +211,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
 
           <label className="block bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
             <span className="block text-sm font-medium text-zinc-300 mb-2">
-              Quien lo ha cogido
+              Quién lo ha cogido
             </span>
             <select
               value={selectedEmployee}
@@ -229,7 +234,13 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
               {saveError}
             </div>
           )}
-<div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
+          {saveSuccess && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-300">
+              {saveSuccess}
+            </div>
+          )}
+
+          <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
             <button
               onClick={handleToggleImage}
               className="w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold transition-all flex items-center justify-center gap-2"
@@ -297,14 +308,20 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
           <button
             onClick={handleSaveAndClose}
             disabled={saving}
-            className={`w-full py-3 font-semibold rounded-xl transition-all active:scale-95 ${
+            className={`w-full min-h-14 py-4 text-base font-semibold rounded-xl transition-all active:scale-95 ${
               hasChanged
                 ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20"
                 : "bg-gradient-to-r from-red-500 to-red-600 text-white"
             } disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
           >
             {saving && <Loader2 className="h-5 w-5 animate-spin" />}
-            {saving ? "Guardando..." : hasChanged ? "Guardar y Cerrar" : "Cerrar"}
+            {saveSuccess
+              ? "Guardado en TallerGP"
+              : saving
+                ? "Guardando..."
+                : hasChanged
+                  ? "Guardar y cerrar"
+                  : "Cerrar"}
           </button>
         </div>
       </div>

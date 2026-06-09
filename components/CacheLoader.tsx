@@ -78,7 +78,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
   }, [loadCache]);
 
   const handleClearCache = () => {
-    if (!window.confirm("Quieres vaciar el catalogo local?")) {
+    if (!window.confirm("¿Quieres vaciar el catálogo local?")) {
       return;
     }
 
@@ -92,7 +92,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
       <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs text-zinc-500">Catalogo local</p>
+            <p className="text-xs text-zinc-500">Catálogo local</p>
             <p className="text-lg font-bold text-white">
               {cacheInfo.itemCount} productos
             </p>
@@ -129,7 +129,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
           <div className="mt-4 border-t border-zinc-800 pt-4">
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-zinc-950 rounded-lg p-3">
-                <p className="text-xs text-zinc-500 mb-1">Tamano</p>
+                <p className="text-xs text-zinc-500 mb-1">Tamaño</p>
                 <p className="text-sm font-bold text-zinc-200">
                   {cacheInfo.sizeKB} KB
                 </p>
@@ -175,7 +175,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
           <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-amber-300 text-sm font-medium">
-              Sin catalogo local
+              Sin catálogo local
             </p>
             <p className="text-amber-300/80 text-sm mt-1">
               Pulsa Actualizar para cargar los materiales.
