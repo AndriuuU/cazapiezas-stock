@@ -56,11 +56,9 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
         }
 
         setEmployees(nextEmployees);
-        setSelectedEmployee((current) => current || nextEmployees[0] || "");
       } catch {
         if (isMounted) {
           setEmployees(["Empleado"]);
-          setSelectedEmployee((current) => current || "Empleado");
         }
       }
     };
@@ -221,6 +219,7 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
               }}
               className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-red-500"
             >
+              <option value="">Empleados</option>
               {employees.map((employee) => (
                 <option key={employee} value={employee}>
                   {employee}
