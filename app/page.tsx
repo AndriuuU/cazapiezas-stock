@@ -11,17 +11,6 @@ import MaterialsList from "@/components/MaterialsList";
 import { getCacheInfo, getAllMaterialsFromCache } from "@/services/cache";
 import { Search, AlertCircle, Loader2, CheckCircle, List, PackagePlus } from "lucide-react";
 import Logo from "@/components/Logo";
-import axios from "axios";
-import { getCacheInfo, getAllMaterialsFromCache } from "@/services/cache";
-import { Search, AlertCircle, Loader2, CheckCircle, List, Clock, ArrowRightLeft } from "lucide-react";
-
-interface PendingAdjustment {
-  id: string;
-  reference: string;
-  name: string;
-  difference: number;
-  created_at: string;
-}
 
 export default function Home() {
   const [scannedCode, setScannedCode] = useState("");
@@ -34,24 +23,12 @@ export default function Home() {
   const [cacheReady, setCacheReady] = useState(false);
   const [cacheItemCount, setCacheItemCount] = useState(0);
 
+  // Estados nuevos para la lista completa de materiales
   const [showMaterialsList, setShowMaterialsList] = useState(false);
   const [showNewProductForm, setShowNewProductForm] = useState(false);
   const [allMaterials, setAllMaterials] = useState<Material[]>([]);
 
-  // ESTADO NUEVO: Cola de ajustes pendientes que se muestran al operario
-  const [queueAdjustments, setQueueAdjustments] = useState<PendingAdjustment[]>([]);
-
-  // Cargar la lista de sincronizaciones pendientes desde la base de datos
-  const fetchQueueAdjustments = async () => {
-    try {
-      const response = await axios.get("/api/adjustments");
-      setQueueAdjustments(response.data);
-    } catch (err) {
-      console.error("Error cargando cola de cambios:", err);
-    }
-  };
-
-  // Verificar si el caché está listo y traer la cola
+  // Verificar si el caché está listo
   useEffect(() => {
     void Promise.resolve().then(() => {
       const info = getCacheInfo();
@@ -63,9 +40,9 @@ export default function Home() {
   const handleCacheLoaded = useCallback((count: number) => {
     setCacheReady(true);
     setCacheItemCount(count);
-    fetchQueueAdjustments(); // Traer cola al cargar caché
   }, []);
 
+  // Cargar todos los materiales solo cuando se abre la lista para ahorrar memoria
   const handleOpenMaterialsList = () => {
     const materials = getAllMaterialsFromCache();
     setAllMaterials(materials);
@@ -94,17 +71,17 @@ export default function Home() {
         if (type === "barcode") {
           material = await searchByBarcode(code);
           if (!material) {
-            setError(`Código de barras "${code}" no encontrado`);
+            setError(`Código de barras "${code}" no encontrado en los materiales cargados`);
           }
         } else if (type === "reference") {
           material = await searchByReference(code);
           if (!material) {
-            setError(`Referencia "${code}" no encontrada`);
+            setError(`Referencia "${code}" no encontrada en los materiales cargados`);
           }
         } else {
           material = await searchMaterial(code);
           if (!material) {
-            setError(`Material no encontrado. Verifique los datos.`);
+            setError(`Material no encontrado. Verifique que el código o referencia sean correctos.`);
           }
         }
 
@@ -115,7 +92,9 @@ export default function Home() {
           setScannedCode("");
         }
       } catch (err) {
-        setError(`Error en la búsqueda: ${err instanceof Error ? err.message : "Error desconocido"}`);
+        setError(
+          `Error en la búsqueda: ${err instanceof Error ? err.message : "Error desconocido"}`
+        );
         console.error("Search error:", err);
       } finally {
         setLoading(false);
@@ -124,6 +103,7 @@ export default function Home() {
     [cacheReady]
   );
 
+  // Cuando se scanea un código
   const handleScan = useCallback(
     (code: string) => {
       setScannedCode(code);
@@ -132,28 +112,23 @@ export default function Home() {
     [handleSearch]
   );
 
+  // Busca manual
   const handleManualSearch = useCallback(() => {
     if (manualCode.trim()) {
       handleSearch(manualCode, searchType === "auto" ? "auto" : searchType);
     }
   }, [manualCode, handleSearch, searchType]);
 
+  // Enter key en el input manual
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleManualSearch();
     }
   };
 
-  // Al cerrar la ficha de producto, volvemos a actualizar la lista por si hubo cambios
-  const handleCloseProductCard = () => {
-    setSelectedMaterial(null);
-    fetchQueueAdjustments();
-  };
-
   return (
-    <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4 pb-12">
+    <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4">
       <div className="max-w-2xl mx-auto">
-        
         {/* Header con tu Logo PNG */}
         <div className="flex flex-col items-center justify-center mb-8 pt-6 text-center">
           <Logo size={56} />
@@ -163,49 +138,12 @@ export default function Home() {
           <CacheLoader onCacheLoaded={handleCacheLoaded} />
         </div>
 
-        {/* COLA DE CAMBIOS EN ESPERA (Aviso para operarios) */}
-        {cacheReady && queueAdjustments.length > 0 && (
-          <div className="mb-8 bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 shadow-xl">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3 flex items-center gap-2">
-              <Clock size={14} className="text-red-500 animate-pulse" />
-              Piezas cogidas en espera de volcar al PC ({queueAdjustments.length})
-            </h3>
-            <div className="space-y-2.5 max-h-40 overflow-y-auto pr-1">
-              {queueAdjustments.map((adjustment) => (
-                <div 
-                  key={adjustment.id} 
-                  className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between text-xs transition-all hover:border-zinc-700"
-                >
-                  <div className="min-w-0 flex-1 pr-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono bg-zinc-900 text-red-400 font-bold px-1.5 py-0.5 rounded text-[10px] border border-zinc-800">
-                        {adjustment.reference}
-                      </span>
-                      <span className="text-[10px] text-zinc-500">
-                        {new Date(adjustment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-zinc-200 font-medium truncate">{adjustment.name}</p>
-                  </div>
-                  <div className="flex-shrink-0 text-right">
-                    <span className={`font-bold px-2 py-0.5 rounded-full ${
-                      adjustment.difference > 0 ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
-                    }`}>
-                      {adjustment.difference > 0 ? `+${adjustment.difference}` : adjustment.difference} u
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Cache Ready Indicator */}
-        {cacheReady && queueAdjustments.length === 0 && (
-          <div className="bg-green-900/10 border border-green-950 rounded-xl p-3 mb-6 flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-            <p className="text-xs text-green-400">
-              Todo sincronizado con el PC. No hay piezas pendientes de procesar.
+        {cacheReady && (
+          <div className="bg-green-900/20 border border-green-800 rounded-xl p-3 mb-6 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+            <p className="text-sm text-green-300">
+              ✓ Caché listo - {cacheItemCount} materiales cargados (búsqueda offline)
             </p>
           </div>
         )}
@@ -243,7 +181,9 @@ export default function Home() {
                 <button
                   onClick={() => setSearchType("auto")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    searchType === "auto" ? "bg-red-500 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    searchType === "auto"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                   }`}
                 >
                   Automático
@@ -251,7 +191,9 @@ export default function Home() {
                 <button
                   onClick={() => setSearchType("barcode")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    searchType === "barcode" ? "bg-red-500 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    searchType === "barcode"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                   }`}
                 >
                   Por Código
@@ -259,7 +201,9 @@ export default function Home() {
                 <button
                   onClick={() => setSearchType("reference")}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    searchType === "reference" ? "bg-red-500 text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    searchType === "reference"
+                      ? "bg-red-500 text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
                   }`}
                 >
                   Por Referencia
@@ -275,7 +219,11 @@ export default function Home() {
                     setError("");
                   }}
                   onKeyPress={handleKeyPress}
-                  placeholder={searchType === "reference" ? "Ej: REF-12345" : "Ej: 8411564234567"}
+                  placeholder={
+                    searchType === "reference"
+                      ? "Ej: REF-12345"
+                      : "Ej: 8411564234567"
+                  }
                   className="flex-1 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-all"
                 />
                 <button
@@ -283,9 +231,22 @@ export default function Home() {
                   disabled={loading || !manualCode.trim()}
                   className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
                 >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Search className="w-5 h-5" />
+                  )}
                   Buscar
                 </button>
+              </div>
+
+              {/* Help Text */}
+              <div className="mt-4 p-3 bg-zinc-800/50 border border-zinc-700 rounded-lg">
+                <p className="text-xs text-zinc-400">
+                  💡 <strong>Automático:</strong> Busca por código de barras o referencia. <br />
+                  <strong>Por Código:</strong> Solo por código de barras (EAN, UPC). <br />
+                  <strong>Por Referencia:</strong> Solo por referencia del producto.
+                </p>
               </div>
             </div>
 
@@ -308,7 +269,7 @@ export default function Home() {
           </>
         )}
 
-        {/* Mensajes de error/éxito */}
+        {/* Error Message */}
         {error && (
           <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 mb-8 flex gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -319,11 +280,27 @@ export default function Home() {
           </div>
         )}
 
+        {/* Success Message */}
+        {success && (
+          <div className="bg-green-900/20 border border-green-800 rounded-xl p-4 mb-8 flex gap-3">
+            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            <p className="text-green-300 text-sm">{success}</p>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-red-400 animate-spin mb-3" />
+            <p className="text-zinc-400">Buscando en {cacheItemCount} materiales...</p>
+          </div>
+        )}
+
         {/* Product Card - Modal de edición */}
         {selectedMaterial && !loading && (
           <ProductCard
             material={selectedMaterial}
-            onClose={handleCloseProductCard} // Usamos la nueva función para recargar la cola al cerrar
+            onClose={() => setSelectedMaterial(null)}
           />
         )}
 
@@ -333,8 +310,8 @@ export default function Home() {
             materials={allMaterials}
             onClose={() => setShowMaterialsList(false)}
             onSelectMaterial={(material) => {
-              setSelectedMaterial(material);
-              setShowMaterialsList(false);
+              setSelectedMaterial(material); // Abrimos la tarjeta del producto
+              setShowMaterialsList(false); // Cerramos la lista
             }}
           />
         )}

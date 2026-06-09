@@ -69,25 +69,17 @@ export default function AdminPanel() {
     }
   }, []);
 
-  const markAsCompleted = async (id: string, articleName: string) => {
+  const markAsCompleted = async (id: string) => {
     try {
       await axios.put("/api/adjustments", { id, status: "completed" });
-
       setAdjustments((current) =>
         current.map((item) =>
           item.id === id ? { ...item, status: "completed" } : item
         )
       );
-
     } catch (err) {
       console.error("Error updating status:", err);
-      triggerNotification("❌ Error al procesar el ajuste.");
     }
-  };
-
-  const handleCopyReference = (reference: string) => {
-    navigator.clipboard.writeText(reference);
-    triggerNotification(`📋 Referencia "${reference}" copiada al portapapeles.`);
   };
 
   useEffect(() => {
@@ -95,16 +87,7 @@ export default function AdminPanel() {
   }, [fetchAdjustments]);
 
   return (
-    <div className="min-screen bg-zinc-950 text-zinc-100 p-6 md:p-12 relative">
-      
-      {/* NOTIFICACIÓN FLOTANTE (TOAST) */}
-      {notification && (
-        <div className="fixed top-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white px-5 py-3 rounded-xl shadow-2xl transition-all duration-300 transform translate-y-0 flex items-center gap-3 animate-fade-in animate-pulse-slow">
-          <Bell size={18} className="text-red-500" />
-          <span className="text-sm font-medium">{notification}</span>
-        </div>
-      )}
-
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-12">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-8">
           <div>
@@ -147,7 +130,7 @@ export default function AdminPanel() {
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="w-10 h-10 text-red-500 animate-spin" />
+            <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
           </div>
         ) : filteredAdjustments.length === 0 ? (
           <div className="text-center py-16 bg-zinc-900 rounded-2xl border border-zinc-800">
@@ -174,9 +157,8 @@ export default function AdminPanel() {
                     <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-red-400 font-bold border border-zinc-800 flex items-center gap-1">
+                          <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-cyan-400 font-bold border border-zinc-800 flex items-center gap-1">
                             {item.reference}
-
                             <button
                               onClick={() => navigator.clipboard.writeText(item.reference)}
                               className="hover:text-white p-0.5"
