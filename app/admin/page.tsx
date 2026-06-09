@@ -6,6 +6,7 @@ import {
   Check,
   Clipboard,
   Clock,
+  Download,
   Loader2,
   Package,
   PackagePlus,
@@ -31,6 +32,15 @@ type ActivityFilter = "all" | "stock" | "products" | "pending";
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
+
+function escapeHtml(value: string | number) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 export default function AdminPanel() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -153,6 +163,83 @@ export default function AdminPanel() {
     }
   };
 
+  const downloadExcel = () => {
+    const rows = filteredAdjustments.map((item) => {
+      const isCreated = isProductCreated(item);
+
+      return {
+        Fecha: new Date(item.created_at).toLocaleString(),
+        Referencia: item.reference,
+        Articulo: getDisplayName(item),
+        Empleado: isCreated ? "" : getEmployeeName(item),
+        "Stock anterior": isCreated ? "" : item.quantity_before,
+        "Stock despues": item.quantity_after,
+        Movimiento: isCreated
+          ? "Producto nuevo"
+          : item.difference > 0
+            ? `+${item.difference}`
+            : item.difference,
+        Estado:
+          item.status === "pending"
+            ? "Pendiente"
+            : isCreated
+              ? "Registrado"
+              : "Guardado",
+      };
+    });
+
+    const headers = [
+      "Fecha",
+      "Referencia",
+      "Articulo",
+      "Empleado",
+      "Stock anterior",
+      "Stock despues",
+      "Movimiento",
+      "Estado",
+    ];
+    const tableRows = rows
+      .map(
+        (row) =>
+          `<tr>${headers
+            .map((header) => `<td>${escapeHtml(row[header as keyof typeof row])}</td>`)
+            .join("")}</tr>`
+      )
+      .join("");
+    const workbook = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    table { border-collapse: collapse; font-family: Arial, sans-serif; }
+    th { background: #111827; color: #ffffff; font-weight: bold; }
+    th, td { border: 1px solid #9ca3af; padding: 8px; }
+    td { mso-number-format: "\\@"; }
+  </style>
+</head>
+<body>
+  <table>
+    <thead>
+      <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+    </thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+</body>
+</html>`;
+    const blob = new Blob([workbook], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const link = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+
+    link.href = URL.createObjectURL(blob);
+    link.download = `cazapiezas-stock-${filter}-${date}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  };
+
   useEffect(() => {
     void Promise.resolve().then(fetchAdjustments);
     void Promise.resolve().then(fetchEmployees);
@@ -248,25 +335,36 @@ export default function AdminPanel() {
           )}
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-2">
-          {[
-            { id: "all", label: "Todo" },
-            { id: "stock", label: "Stock" },
-            { id: "products", label: "Productos nuevos" },
-            { id: "pending", label: "Pendientes" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setFilter(item.id as ActivityFilter)}
-              className={`px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${
-                filter === item.id
-                  ? "bg-red-500 text-white border-red-500"
-                  : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-white"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "all", label: "Todo" },
+              { id: "stock", label: "Stock" },
+              { id: "products", label: "Productos nuevos" },
+              { id: "pending", label: "Pendientes" },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setFilter(item.id as ActivityFilter)}
+                className={`px-4 py-2 rounded-lg border text-sm font-semibold transition-all ${
+                  filter === item.id
+                    ? "bg-red-500 text-white border-red-500"
+                    : "bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800 hover:text-white"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={downloadExcel}
+            disabled={filteredAdjustments.length === 0}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+          >
+            <Download size={16} />
+            Descargar Excel
+          </button>
         </div>
 
         {loading ? (
