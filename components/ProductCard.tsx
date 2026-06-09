@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import axios from "axios";
 import {
@@ -33,13 +33,51 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
   const [imageUrl, setImageUrl] = useState(material.photos?.[0]?.url || "");
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [employees, setEmployees] = useState<string[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState("");
 
   const quantityDifference = editedQuantity - material.quantity;
   const hasChanged = quantityDifference !== 0;
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchEmployees = async () => {
+      try {
+        const response = await axios.get("/api/employees");
+        const nextEmployees = Array.isArray(response.data.employees)
+          ? response.data.employees
+          : [];
+
+        if (!isMounted) {
+          return;
+        }
+
+        setEmployees(nextEmployees);
+        setSelectedEmployee((current) => current || nextEmployees[0] || "");
+      } catch {
+        if (isMounted) {
+          setEmployees(["Empleado"]);
+          setSelectedEmployee((current) => current || "Empleado");
+        }
+      }
+    };
+
+    void fetchEmployees();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleSaveAndClose = async () => {
     if (!hasChanged) {
       onClose();
+      return;
+    }
+
+    if (!selectedEmployee) {
+      setSaveError("Selecciona quien ha cogido el material.");
       return;
     }
 
@@ -53,6 +91,7 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
         name: material.name,
         quantity_before: material.quantity,
         quantity_after: editedQuantity,
+        employee_name: selectedEmployee,
       });
 
       updateMaterialQuantityInCache(material.material_id, editedQuantity);
@@ -164,6 +203,26 @@ export default function ProductCard({ material, onClose }: ProductCardProps) {
             quantity={editedQuantity}
             onQuantityChange={setEditedQuantity}
           />
+
+          <label className="block bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
+            <span className="block text-sm font-medium text-zinc-300 mb-2">
+              Quien lo ha cogido
+            </span>
+            <select
+              value={selectedEmployee}
+              onChange={(event) => {
+                setSelectedEmployee(event.target.value);
+                setSaveError("");
+              }}
+              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-red-500"
+            >
+              {employees.map((employee) => (
+                <option key={employee} value={employee}>
+                  {employee}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {saveError && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
