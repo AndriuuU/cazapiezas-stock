@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
-  CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   RefreshCw,
   Trash2,
@@ -24,20 +25,18 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
     isExpired: true,
   });
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
 
   const loadCache = useCallback(
     async (forceRefresh = false) => {
       try {
         setIsLoading(true);
         setError("");
-        setSuccess("");
 
         const materials = await loadAllMaterials(forceRefresh);
         const info = getCacheInfo();
 
         setCacheInfo(info);
-        setSuccess(`${materials.length} materiales cargados`);
         onCacheLoaded?.(materials.length);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Error desconocido";
@@ -86,89 +85,80 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
     clearCache();
     const info = getCacheInfo();
     setCacheInfo(info);
-    setSuccess("Catalogo local vaciado");
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-        <div className="flex items-start justify-between mb-4 gap-4">
+    <div className="space-y-3">
+      <div className="bg-zinc-900/70 border border-zinc-800 rounded-2xl p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-white mb-1">
-              Catalogo local
-            </h3>
-            <p className="text-sm text-zinc-400">
-              Se actualiza al pedirlo o automaticamente cada 24 horas.
+            <p className="text-xs text-zinc-500">Catalogo local</p>
+            <p className="text-lg font-bold text-white">
+              {cacheInfo.itemCount} productos
             </p>
           </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => void loadCache(true)}
+              disabled={isLoading}
+              className="flex-1 sm:flex-none px-4 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              {isLoading ? "Cargando..." : "Actualizar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDetails((current) => !current)}
+              className="px-4 py-3 bg-zinc-950 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-xl font-medium transition-all flex items-center justify-center gap-2"
+            >
+              {showDetails ? (
+                <ChevronUp className="w-4 h-4" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+              Datos
+            </button>
+          </div>
+        </div>
 
-          {cacheInfo.itemCount > 0 && !cacheInfo.isExpired && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-green-900/30 border border-green-700 rounded-lg">
-              <CheckCircle className="w-4 h-4 text-green-400" />
-              <span className="text-xs font-medium text-green-400">Listo</span>
+        {showDetails && (
+          <div className="mt-4 border-t border-zinc-800 pt-4">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-zinc-950 rounded-lg p-3">
+                <p className="text-xs text-zinc-500 mb-1">Tamano</p>
+                <p className="text-sm font-bold text-zinc-200">
+                  {cacheInfo.sizeKB} KB
+                </p>
+              </div>
+              <div className="bg-zinc-950 rounded-lg p-3">
+                <p className="text-xs text-zinc-500 mb-1">Actualizado</p>
+                <p className="text-sm font-mono text-zinc-200">
+                  {cacheInfo.lastUpdated
+                    ? new Date(cacheInfo.lastUpdated).toLocaleString()
+                    : "Nunca"}
+                </p>
+              </div>
             </div>
-          )}
-          {cacheInfo.itemCount > 0 && cacheInfo.isExpired && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/30 border border-amber-700 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-medium text-amber-400">24h</span>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-zinc-500">
+                Se recarga solo cuando pasan 24 horas.
+              </p>
+              <button
+                onClick={handleClearCache}
+                disabled={isLoading || cacheInfo.itemCount === 0}
+                className="px-3 py-2 bg-red-900/20 border border-red-800 text-red-400 rounded-lg text-sm font-medium hover:bg-red-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Vaciar
+              </button>
             </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-zinc-800 rounded-lg p-3">
-            <p className="text-xs text-zinc-400 mb-1">Productos</p>
-            <p className="text-2xl font-bold text-cyan-400">
-              {cacheInfo.itemCount}
-            </p>
           </div>
-          <div className="bg-zinc-800 rounded-lg p-3">
-            <p className="text-xs text-zinc-400 mb-1">Tamano</p>
-            <p className="text-2xl font-bold text-cyan-400">
-              {cacheInfo.sizeKB} KB
-            </p>
-          </div>
-          <div className="bg-zinc-800 rounded-lg p-3">
-            <p className="text-xs text-zinc-400 mb-1">Actualizado</p>
-            <p className="text-xs font-mono text-cyan-400">
-              {cacheInfo.lastUpdated
-                ? new Date(cacheInfo.lastUpdated).toLocaleDateString()
-                : "Nunca"}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => void loadCache(true)}
-            disabled={isLoading}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-xl font-medium hover:shadow-lg hover:shadow-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            {isLoading ? "Cargando..." : "Actualizar catalogo"}
-          </button>
-          <button
-            onClick={handleClearCache}
-            disabled={isLoading || cacheInfo.itemCount === 0}
-            className="px-4 py-3 bg-red-900/20 border border-red-800 text-red-400 rounded-xl font-medium hover:bg-red-900/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-          >
-            <Trash2 className="w-4 h-4" />
-            Vaciar
-          </button>
-        </div>
+        )}
       </div>
-
-      {success && (
-        <div className="bg-green-900/20 border border-green-800 rounded-xl p-4 flex gap-3">
-          <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-          <p className="text-green-300 text-sm">{success}</p>
-        </div>
-      )}
 
       {error && (
         <div className="bg-red-900/20 border border-red-800 rounded-xl p-4 flex gap-3">
@@ -188,7 +178,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
               Sin catalogo local
             </p>
             <p className="text-amber-300/80 text-sm mt-1">
-              Pulsa Actualizar catalogo para cargar los materiales.
+              Pulsa Actualizar para cargar los materiales.
             </p>
           </div>
         </div>

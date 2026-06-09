@@ -138,16 +138,6 @@ export default function Home() {
           <CacheLoader onCacheLoaded={handleCacheLoaded} />
         </div>
 
-        {/* Cache Ready Indicator */}
-        {cacheReady && (
-          <div className="bg-green-900/20 border border-green-800 rounded-xl p-3 mb-6 flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
-            <p className="text-sm text-green-300">
-              ✓ Caché listo - {cacheItemCount} materiales cargados (búsqueda offline)
-            </p>
-          </div>
-        )}
-
         {!cacheReady && (
           <button
             onClick={() => setShowNewProductForm(true)}
