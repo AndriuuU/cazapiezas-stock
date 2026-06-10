@@ -235,6 +235,28 @@ export function getAllMaterialsFromCache(): Material[] {
 }
 
 /**
+ * Actualiza el stock de un material en el cache local.
+ */
+export function updateMaterialQuantityInCache(
+  materialId: string,
+  quantity: number
+): void {
+  const materials = getMaterialsFromCache();
+
+  if (!materials) {
+    return;
+  }
+
+  const updatedMaterials = materials.map((material) =>
+    material.material_id === materialId
+      ? { ...material, quantity }
+      : material
+  );
+
+  saveMaterialsToCache(updatedMaterials);
+}
+
+/**
  * Detalle material cacheado
  */
 export function getMaterialDetailsFromCache(

@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
     "192.168.1.35",
     "localhost"
   ],
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "d1mhieb01d7dro.cloudfront.net",
+      },
+    ],
+  },
 };
 
 export default nextConfig;
