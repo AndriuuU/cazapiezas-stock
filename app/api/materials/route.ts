@@ -15,6 +15,19 @@ const tallergpClient = axios.create({
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const PRODUCT_BARCODE_SUFFIX_PREFIX = " [CODIGO: ";
+const PRODUCT_SNAPSHOT_SUFFIX_PREFIX = " [FICHA: ";
+
+interface ProductSnapshot {
+  reference: string;
+  name: string;
+  barcode: string;
+  quantity: number;
+  cost?: number;
+  pvp?: number;
+  tax_rate: number;
+  alert_threshold: number;
+  created_at: string;
+}
 
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -34,6 +47,7 @@ async function registerProductCreatedEvent(material: {
   name: string;
   quantity: number;
   barcode?: string;
+  snapshot?: ProductSnapshot;
 }) {
   const { url, anonKey } = getSupabaseRestConfig();
 
@@ -67,11 +81,22 @@ async function registerProductCreatedEvent(material: {
   const nameWithBarcode = material.barcode
     ? `${material.name}${PRODUCT_BARCODE_SUFFIX_PREFIX}${material.barcode}]`
     : material.name;
+  const snapshotSuffix = material.snapshot
+    ? `${PRODUCT_SNAPSHOT_SUFFIX_PREFIX}${Buffer.from(
+        JSON.stringify(material.snapshot),
+        "utf8"
+      )
+        .toString("base64")
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replaceAll("=", "")}]`
+    : "";
+  const nameWithSnapshot = `${nameWithBarcode}${snapshotSuffix}`;
 
   try {
-    return await insertEvent("pending", `${PRODUCT_CREATED_PREFIX}${nameWithBarcode}`);
+    return await insertEvent("pending", `${PRODUCT_CREATED_PREFIX}${nameWithSnapshot}`);
   } catch {
-    return insertEvent("completed", `${PRODUCT_CREATED_PREFIX}${nameWithBarcode}`);
+    return insertEvent("completed", `${PRODUCT_CREATED_PREFIX}${nameWithSnapshot}`);
   }
 }
 
@@ -119,9 +144,7 @@ async function fetchExistingBarcodes() {
   return barcodes;
 }
 
-async function generateUniqueInternalBarcode() {
-  const existingBarcodes = await fetchExistingBarcodes();
-
+function generateUniqueInternalBarcode(existingBarcodes: Set<string>) {
   for (let attempt = 0; attempt < 20; attempt++) {
     const barcode = createInternalEan13();
 
@@ -147,7 +170,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const serialNumber = requestedBarcode || (await generateUniqueInternalBarcode());
+    const existingBarcodes = await fetchExistingBarcodes();
+
+    if (requestedBarcode && existingBarcodes.has(requestedBarcode)) {
+      return NextResponse.json(
+        { error: "Ese codigo de barras ya existe en otro producto" },
+        { status: 409 }
+      );
+    }
+
+    const serialNumber = requestedBarcode || generateUniqueInternalBarcode(existingBarcodes);
     const payload = {
       reference,
       description,
@@ -172,12 +204,25 @@ export async function POST(request: Request) {
     }
 
     try {
-      await registerProductCreatedEvent({
-        material_id: createdMaterial.material_id,
+      const snapshot: ProductSnapshot = {
         reference: createdMaterial.reference || reference,
         name: createdMaterial.name || createdMaterial.description || description,
-        quantity: Number(createdMaterial.quantity ?? payload.quantity),
         barcode: createdBarcode,
+        quantity: Number(createdMaterial.quantity ?? payload.quantity),
+        cost: payload.cost,
+        pvp: payload.pvp,
+        tax_rate: payload.tax_rate,
+        alert_threshold: payload.alert_threshold,
+        created_at: new Date().toISOString(),
+      };
+
+      await registerProductCreatedEvent({
+        material_id: createdMaterial.material_id,
+        reference: snapshot.reference,
+        name: snapshot.name,
+        quantity: snapshot.quantity,
+        barcode: createdBarcode,
+        snapshot,
       });
     } catch (historyError) {
       historyWarning = getErrorMessage(historyError);

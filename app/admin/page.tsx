@@ -26,7 +26,7 @@ import {
   Users,
 } from "lucide-react";
 import Logo from "@/components/Logo";
-import { getAllMaterialsFromCache } from "@/services/cache";
+import { getAllMaterialsFromCache, loadAllMaterials } from "@/services/cache";
 import { Material } from "@/types/material";
 
 interface Adjustment {
@@ -42,9 +42,28 @@ interface Adjustment {
   barcode?: string;
   material_name?: string;
   deleted_from_tallergp?: boolean;
+  product_snapshot?: ProductSnapshot;
 }
 
-type AdminView = "dashboard" | "stock" | "products" | "employees" | "exports";
+interface ProductSnapshot {
+  reference?: string;
+  name?: string;
+  barcode?: string;
+  quantity?: number;
+  cost?: number;
+  pvp?: number;
+  tax_rate?: number;
+  alert_threshold?: number;
+  created_at?: string;
+}
+
+type AdminView =
+  | "dashboard"
+  | "stock"
+  | "products"
+  | "labels"
+  | "employees"
+  | "exports";
 type SortKey = "created_at" | "employee" | "reference" | "difference";
 
 interface ActivityTableProps {
@@ -56,12 +75,13 @@ interface ActivityTableProps {
   getEmployeeName: (item: Adjustment) => string;
   getDisplayName: (item: Adjustment) => string;
   markAsCompleted: (id: string) => Promise<void>;
-  printBarcodeLabel: (item: Adjustment) => void;
+  printBarcodeLabel: (item: Adjustment) => Promise<void>;
 }
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
 const PRODUCT_BARCODE_SUFFIX_PATTERN = /\s*\[CODIGO: ([^\]]+)\]\s*$/;
+const PRODUCT_SNAPSHOT_SUFFIX_PATTERN = /\s*\[FICHA: ([^\]]+)\]\s*$/;
 
 function escapeHtml(value: string | number) {
   return String(value)
@@ -70,6 +90,13 @@ function escapeHtml(value: string | number) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function cleanActivityName(value: string) {
+  return value
+    .replace(EMPLOYEE_PREFIX_PATTERN, "")
+    .replace(PRODUCT_SNAPSHOT_SUFFIX_PATTERN, "")
+    .replace(PRODUCT_BARCODE_SUFFIX_PATTERN, "");
 }
 
 const EAN13_LEFT_ODD: Record<string, string> = {
@@ -144,15 +171,15 @@ function buildEan13Svg(barcode: string) {
     .split("")
     .map((bit, index) =>
       bit === "1"
-        ? `<rect x="${index * 2}" y="0" width="2" height="44" fill="#000" />`
+        ? `<rect x="${index * 2}" y="0" width="2" height="34" fill="#000" />`
         : ""
     )
     .join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="62" viewBox="0 0 190 62" role="img" aria-label="${barcode}">
-    <rect width="190" height="62" fill="#fff" />
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="50" viewBox="0 0 190 50" role="img" aria-label="${barcode}">
+    <rect width="190" height="50" fill="#fff" />
     <g transform="translate(0 1)">${bars}</g>
-    <text x="95" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" letter-spacing="2">${barcode}</text>
+    <text x="95" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" letter-spacing="2">${barcode}</text>
   </svg>`;
 }
 
@@ -395,11 +422,7 @@ export default function AdminPanel() {
       ? item.name.slice(PRODUCT_CREATED_PREFIX.length)
       : item.name;
 
-    return (
-      withoutProductPrefix
-        ?.replace(EMPLOYEE_PREFIX_PATTERN, "")
-        .replace(PRODUCT_BARCODE_SUFFIX_PATTERN, "") || ""
-    );
+    return withoutProductPrefix ? cleanActivityName(withoutProductPrefix) : "";
   }, []);
 
   const stockMovements = useMemo(
@@ -463,8 +486,12 @@ export default function AdminPanel() {
     [productCreations, sortActivities]
   );
 
-  const refreshLowStock = useCallback(() => {
-    const materials = getAllMaterialsFromCache();
+  const pendingLabelCreations = useMemo(
+    () => sortedProductCreations.filter((item) => item.status === "pending"),
+    [sortedProductCreations]
+  );
+
+  const updateLowStockMaterials = useCallback((materials: Material[]) => {
     const lowStock = materials
       .filter((material) => {
         const threshold = Number(material.alert_threshold ?? 2);
@@ -476,12 +503,29 @@ export default function AdminPanel() {
     setLowStockMaterials(lowStock);
   }, []);
 
+  const refreshLowStock = useCallback(async () => {
+    try {
+      const materials = await loadAllMaterials(false);
+      updateLowStockMaterials(materials);
+    } catch (error) {
+      console.error("Error refreshing low stock:", error);
+      updateLowStockMaterials(getAllMaterialsFromCache());
+    }
+  }, [updateLowStockMaterials]);
+
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await axios.get("/api/adjustments");
-      setAdjustments(response.data);
-      refreshLowStock();
+      const [adjustmentsResult] = await Promise.allSettled([
+        axios.get("/api/adjustments"),
+        refreshLowStock(),
+      ]);
+
+      if (adjustmentsResult.status === "fulfilled") {
+        setAdjustments(adjustmentsResult.value.data);
+      } else {
+        console.error("Error fetching data:", adjustmentsResult.reason);
+      }
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -551,24 +595,34 @@ export default function AdminPanel() {
     }
   };
 
-  const printBarcodeLabel = async (item: Adjustment) => {
-    if (!item.barcode) {
+  const markLabelsAsCompleted = async (items: Adjustment[]) => {
+    const pendingItems = items.filter((item) => item.status === "pending");
+
+    if (pendingItems.length === 0) {
       return;
     }
 
-    const svg = buildEan13Svg(item.barcode);
-    const articleName = getDisplayName(item);
-    const labelWindow = window.open("", "_blank", "width=420,height=360");
+    await Promise.all(pendingItems.map((item) => markAsCompleted(item.id)));
+  };
 
-    if (!labelWindow) {
-      return;
-    }
+  const buildLabelHtml = (items: Adjustment[]) => {
+    const labels = items
+      .filter((item) => item.barcode)
+      .map((item) => {
+        const barcode = item.barcode || "";
 
-    labelWindow.document.write(`<!doctype html>
+        return `<div class="label">
+    <div class="article">${escapeHtml(getDisplayName(item))}</div>
+    ${buildEan13Svg(barcode)}
+  </div>`;
+      })
+      .join("");
+
+    return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Etiqueta ${escapeHtml(item.barcode)}</title>
+  <title>Etiquetas Cazapiezas</title>
   <style>
     @page { size: 62mm 29mm; margin: 0; }
     * { box-sizing: border-box; }
@@ -577,30 +631,35 @@ export default function AdminPanel() {
     .label {
       width: 62mm;
       height: 29mm;
+      max-height: 29mm;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 1mm;
+      justify-content: flex-start;
+      gap: 0.5mm;
       break-inside: avoid;
       page-break-inside: avoid;
+      page-break-after: always;
       overflow: hidden;
-      padding: 1mm 2mm;
+      padding: 2mm 2mm 1.8mm;
     }
+    .label:last-child { page-break-after: auto; }
     .article {
       width: 58mm;
-      max-height: 5mm;
+      height: 8mm;
       overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
+      white-space: normal;
       text-align: center;
-      font-size: 9px;
-      line-height: 1.1;
+      font-size: 11px;
+      line-height: 1.05;
       font-weight: 700;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
     svg {
       width: 56mm;
-      height: 20mm;
+      height: 16.5mm;
       display: block;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -611,10 +670,7 @@ export default function AdminPanel() {
   </style>
 </head>
 <body>
-  <div class="label">
-    <div class="article">${escapeHtml(articleName)}</div>
-    ${svg}
-  </div>
+  ${labels}
   <script>
     window.addEventListener("load", () => {
       window.print();
@@ -622,11 +678,29 @@ export default function AdminPanel() {
     });
   </script>
 </body>
-</html>`);
-    labelWindow.document.close();
-    if (item.status === "pending") {
-      await markAsCompleted(item.id);
+</html>`;
+  };
+
+  const printBarcodeLabels = async (items: Adjustment[]) => {
+    const printableItems = items.filter((item) => item.barcode);
+
+    if (printableItems.length === 0) {
+      return;
     }
+
+    const labelWindow = window.open("", "_blank", "width=420,height=360");
+
+    if (!labelWindow) {
+      return;
+    }
+
+    labelWindow.document.write(buildLabelHtml(printableItems));
+    labelWindow.document.close();
+    await markLabelsAsCompleted(printableItems);
+  };
+
+  const printBarcodeLabel = async (item: Adjustment) => {
+    await printBarcodeLabels([item]);
   };
 
   const handleSort = (key: SortKey) => {
@@ -715,6 +789,142 @@ export default function AdminPanel() {
     URL.revokeObjectURL(link.href);
   };
 
+  type ExportRow = Record<string, string | number>;
+
+  const getProductState = (item: Adjustment) => {
+    if (item.deleted_from_tallergp) return "Borrado de TallerGP";
+    if (!item.barcode) return "Sin codigo";
+    if (item.status === "pending") return "Etiqueta pendiente";
+    if (item.status === "completed") return "Etiqueta impresa";
+    return item.status || "Registrado";
+  };
+
+  const buildBackupRows = (rows: Adjustment[]): ExportRow[] =>
+    rows.map((item) => {
+      const isCreated = isProductCreated(item);
+
+      return {
+        Fecha: new Date(item.created_at).toLocaleString(),
+        Referencia: item.reference,
+        Codigo: item.barcode || "",
+        Articulo: getDisplayName(item),
+        Empleado: isCreated ? "" : getEmployeeName(item),
+        "Stock anterior": isCreated ? "" : item.quantity_before,
+        "Stock despues": item.quantity_after,
+        Movimiento: isCreated
+          ? "Producto nuevo"
+          : item.difference > 0
+            ? `+${item.difference}`
+            : item.difference,
+        Estado: isCreated
+          ? getProductState(item)
+          : item.status === "pending"
+            ? "Pendiente"
+            : "Guardado",
+        Coste: item.product_snapshot?.cost ?? "",
+        PVP: item.product_snapshot?.pvp ?? "",
+        IVA: item.product_snapshot?.tax_rate ?? "",
+        "Alerta stock": item.product_snapshot?.alert_threshold ?? "",
+      };
+    });
+
+  const buildCatalogRows = (): ExportRow[] =>
+    getAllMaterialsFromCache().map((material) => ({
+      Referencia: material.reference || "",
+      Articulo: material.name || material.description || "",
+      Codigo: material.barcode || material.ean || material.serial_number || "",
+      Stock: Number(material.quantity ?? 0),
+      Coste: Number(material.cost ?? 0),
+      PVP: Number(material.pvp ?? 0),
+      IVA: Number(material.tax_rate ?? material.iva ?? 0),
+      "Alerta stock": Number(material.alert_threshold ?? 0),
+      Estado: "Activo en catalogo local",
+    }));
+
+  const buildLabelRows = (rows: Adjustment[]): ExportRow[] =>
+    rows.map((item) => ({
+      Fecha: new Date(item.created_at).toLocaleString(),
+      Referencia: item.reference,
+      Articulo: getDisplayName(item),
+      Codigo: item.barcode || "",
+      Estado: getProductState(item),
+    }));
+
+  const buildBackupTable = (title: string, rows: ExportRow[]) => {
+    const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+    const body = rows
+      .map(
+        (row) =>
+          `<tr>${headers
+            .map((header) => `<td>${escapeHtml(row[header] ?? "")}</td>`)
+            .join("")}</tr>`
+      )
+      .join("");
+
+    return `<h2>${escapeHtml(title)}</h2>
+  <table>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+    <tbody>${body}</tbody>
+  </table>`;
+  };
+
+  const downloadBackupWorkbook = (
+    sheets: Array<{ title: string; rows: ExportRow[] }>,
+    label: string
+  ) => {
+    const tables = sheets
+      .filter((sheet) => sheet.rows.length > 0)
+      .map((sheet) => buildBackupTable(sheet.title, sheet.rows))
+      .join("<br />");
+    const workbook = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    h2 { font-family: Arial, sans-serif; margin: 18px 0 8px; }
+    table { border-collapse: collapse; font-family: Arial, sans-serif; margin-bottom: 18px; }
+    th { background: #111827; color: #ffffff; font-weight: bold; }
+    th, td { border: 1px solid #9ca3af; padding: 8px; }
+    td { mso-number-format: "\\@"; }
+  </style>
+</head>
+<body>
+  ${tables || "<p>Sin datos.</p>"}
+</body>
+</html>`;
+    const blob = new Blob([workbook], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const link = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+
+    link.href = URL.createObjectURL(blob);
+    link.download = `cazapiezas-stock-${label}-${date}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const downloadCatalog = () => {
+    downloadBackupWorkbook(
+      [{ title: "Catalogo", rows: buildCatalogRows() }],
+      "catalogo"
+    );
+  };
+
+  const downloadCompleteBackup = () => {
+    downloadBackupWorkbook(
+      [
+        { title: "Catalogo", rows: buildCatalogRows() },
+        { title: "Movimientos", rows: buildBackupRows(sortedStockMovements) },
+        { title: "Altas", rows: buildBackupRows(sortedProductCreations) },
+        { title: "Etiquetas", rows: buildLabelRows(sortedProductCreations) },
+      ],
+      "backup-completo"
+    );
+  };
+
   useEffect(() => {
     void Promise.resolve().then(fetchAdjustments);
     void Promise.resolve().then(fetchEmployees);
@@ -724,6 +934,7 @@ export default function AdminPanel() {
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "stock", label: "Stock", icon: PackageMinus },
     { id: "products", label: "Altas", icon: PackagePlus },
+    { id: "labels", label: "Etiquetas", icon: Barcode },
     { id: "employees", label: "Empleados", icon: Users },
     { id: "exports", label: "Exportaciones", icon: Download },
   ] as const;
@@ -938,6 +1149,48 @@ export default function AdminPanel() {
           </ViewSection>
         )}
 
+        {view === "labels" && (
+          <ViewSection
+            title="Etiquetas pendientes"
+            description="Cola de productos nuevos que todavia no se han marcado como impresos."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => printBarcodeLabels(pendingLabelCreations)}
+                  disabled={
+                    pendingLabelCreations.filter((item) => item.barcode).length === 0
+                  }
+                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-sm font-semibold transition-all flex items-center gap-2"
+                >
+                  <Printer size={16} />
+                  Imprimir todas
+                </button>
+                <button
+                  onClick={() => markLabelsAsCompleted(pendingLabelCreations)}
+                  disabled={pendingLabelCreations.length === 0}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-sm font-semibold transition-all flex items-center gap-2 border border-zinc-700"
+                >
+                  <Check size={16} />
+                  Marcar como impresas
+                </button>
+              </div>
+            }
+          >
+            {loading ? (
+              <Loader />
+            ) : pendingLabelCreations.length === 0 ? (
+              <EmptyState text="No hay etiquetas pendientes." />
+            ) : (
+              <LabelQueue
+                rows={pendingLabelCreations}
+                getDisplayName={getDisplayName}
+                printBarcodeLabel={printBarcodeLabel}
+                markAsCompleted={markAsCompleted}
+              />
+            )}
+          </ViewSection>
+        )}
+
         {view === "employees" && (
           <ViewSection
             title="Empleados"
@@ -1029,6 +1282,16 @@ export default function AdminPanel() {
                 count={sortedProductCreations.length}
                 onClick={() => downloadExcel(sortedProductCreations, "altas")}
               />
+              <ExportCard
+                title="Catalogo completo"
+                count={getAllMaterialsFromCache().length}
+                onClick={downloadCatalog}
+              />
+              <ExportCard
+                title="Backup completo"
+                count={adjustments.length + getAllMaterialsFromCache().length}
+                onClick={downloadCompleteBackup}
+              />
             </div>
           </ViewSection>
         )}
@@ -1050,6 +1313,73 @@ function EmptyState({ text }: { text: string }) {
     <div className="text-center py-16 bg-zinc-900 rounded-2xl border border-zinc-800">
       <Package size={48} className="text-zinc-600 mx-auto mb-3" />
       <p className="text-zinc-400 font-medium">{text}</p>
+    </div>
+  );
+}
+
+function LabelQueue({
+  rows,
+  getDisplayName,
+  printBarcodeLabel,
+  markAsCompleted,
+}: {
+  rows: Adjustment[];
+  getDisplayName: (item: Adjustment) => string;
+  printBarcodeLabel: (item: Adjustment) => Promise<void>;
+  markAsCompleted: (id: string) => Promise<void>;
+}) {
+  return (
+    <div className="grid gap-3">
+      {rows.map((item) => (
+        <div
+          key={item.id}
+          className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:flex-row md:items-center md:justify-between"
+        >
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="font-mono rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-sm font-bold text-cyan-400">
+                {item.reference}
+              </span>
+              {item.deleted_from_tallergp && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">
+                  <AlertTriangle size={14} />
+                  Borrado de TallerGP
+                </span>
+              )}
+              {!item.barcode && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-300">
+                  <AlertTriangle size={14} />
+                  Sin codigo
+                </span>
+              )}
+            </div>
+            <p className="truncate font-semibold text-white">{getDisplayName(item)}</p>
+            <p className="mt-1 font-mono text-sm text-zinc-400">
+              {item.barcode || "Sin codigo guardado"}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={() => printBarcodeLabel(item)}
+              disabled={!item.barcode}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-cyan-500 disabled:opacity-50"
+            >
+              <Printer size={16} />
+              Imprimir
+            </button>
+            <button
+              type="button"
+              onClick={() => markAsCompleted(item.id)}
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-zinc-700"
+            >
+              <Check size={16} />
+              Marcar como impresa
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
