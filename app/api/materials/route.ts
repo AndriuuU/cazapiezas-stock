@@ -1,5 +1,6 @@
 import axios from "axios";
 import { NextResponse } from "next/server";
+import { createInternalEan13 } from "@/lib/barcodes";
 import { getSupabaseRestConfig } from "@/lib/supabase";
 
 const tallergpClient = axios.create({
@@ -13,6 +14,7 @@ const tallergpClient = axios.create({
 });
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
+const PRODUCT_BARCODE_SUFFIX_PREFIX = " [CODIGO: ";
 
 function getErrorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -31,6 +33,7 @@ async function registerProductCreatedEvent(material: {
   reference: string;
   name: string;
   quantity: number;
+  barcode?: string;
 }) {
   const { url, anonKey } = getSupabaseRestConfig();
 
@@ -61,12 +64,73 @@ async function registerProductCreatedEvent(material: {
 
     return response.json();
   };
+  const nameWithBarcode = material.barcode
+    ? `${material.name}${PRODUCT_BARCODE_SUFFIX_PREFIX}${material.barcode}]`
+    : material.name;
 
   try {
-    return await insertEvent("created", material.name);
+    return await insertEvent("pending", `${PRODUCT_CREATED_PREFIX}${nameWithBarcode}`);
   } catch {
-    return insertEvent("completed", `${PRODUCT_CREATED_PREFIX}${material.name}`);
+    return insertEvent("completed", `${PRODUCT_CREATED_PREFIX}${nameWithBarcode}`);
   }
+}
+
+function materialHasBarcode(material: Record<string, unknown>, barcode: string) {
+  return (
+    material.barcode === barcode ||
+    material.ean === barcode ||
+    material.serial_number === barcode
+  );
+}
+
+async function fetchExistingBarcodes() {
+  const barcodes = new Set<string>();
+  let page = 1;
+  let hasMorePages = true;
+
+  while (hasMorePages) {
+    const response = await tallergpClient.get("/materials", {
+      params: {
+        page,
+        per_page: 100,
+      },
+    });
+    const materials = response.data.data || response.data || [];
+
+    for (const material of materials) {
+      for (const key of ["barcode", "ean", "serial_number"]) {
+        const value = String(material?.[key] || "").trim();
+
+        if (value) {
+          barcodes.add(value);
+        }
+      }
+    }
+
+    if (response.data.pagination) {
+      hasMorePages = page < response.data.pagination.total_pages;
+    } else {
+      hasMorePages = materials.length === 100;
+    }
+
+    page++;
+  }
+
+  return barcodes;
+}
+
+async function generateUniqueInternalBarcode() {
+  const existingBarcodes = await fetchExistingBarcodes();
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const barcode = createInternalEan13();
+
+    if (!existingBarcodes.has(barcode)) {
+      return barcode;
+    }
+  }
+
+  throw new Error("No se pudo generar un codigo de barras unico");
 }
 
 export async function POST(request: Request) {
@@ -74,6 +138,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const reference = String(body.reference || "").trim().toUpperCase();
     const description = String(body.description || body.name || "").trim();
+    const requestedBarcode = String(body.serial_number || body.barcode || body.ean || "").trim();
 
     if (!reference || !description) {
       return NextResponse.json(
@@ -82,10 +147,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const serialNumber = requestedBarcode || (await generateUniqueInternalBarcode());
     const payload = {
       reference,
       description,
-      serial_number: body.serial_number || undefined,
+      serial_number: serialNumber,
       quantity: Number(body.quantity || 0),
       cost: body.cost === "" || body.cost === undefined ? undefined : Number(body.cost),
       pvp: body.pvp === "" || body.pvp === undefined ? undefined : Number(body.pvp),
@@ -95,7 +161,15 @@ export async function POST(request: Request) {
 
     const response = await tallergpClient.post("/materials", payload);
     const createdMaterial = response.data || {};
+    const createdBarcode =
+      String(createdMaterial.barcode || createdMaterial.ean || createdMaterial.serial_number || "").trim() ||
+      serialNumber;
     let historyWarning: string | undefined;
+
+    if (!requestedBarcode && !materialHasBarcode(createdMaterial, serialNumber)) {
+      historyWarning =
+        "Se genero un codigo interno, pero TallerGP no lo devolvio en la ficha creada.";
+    }
 
     try {
       await registerProductCreatedEvent({
@@ -103,6 +177,7 @@ export async function POST(request: Request) {
         reference: createdMaterial.reference || reference,
         name: createdMaterial.name || createdMaterial.description || description,
         quantity: Number(createdMaterial.quantity ?? payload.quantity),
+        barcode: createdBarcode,
       });
     } catch (historyError) {
       historyWarning = getErrorMessage(historyError);
@@ -111,6 +186,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ...response.data,
+        generated_barcode: requestedBarcode ? undefined : createdBarcode,
         history_warning: historyWarning,
       },
       { status: 201 }

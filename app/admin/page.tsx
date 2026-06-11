@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import axios from "axios";
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Barcode,
   Check,
   Clipboard,
   Clock,
@@ -14,6 +16,7 @@ import {
   Package,
   PackageMinus,
   PackagePlus,
+  Printer,
   RefreshCw,
   Save,
   Trash2,
@@ -36,6 +39,9 @@ interface Adjustment {
   difference: number;
   status?: "pending" | "completed" | "created" | string;
   created_at: string;
+  barcode?: string;
+  material_name?: string;
+  deleted_from_tallergp?: boolean;
 }
 
 type AdminView = "dashboard" | "stock" | "products" | "employees" | "exports";
@@ -50,10 +56,12 @@ interface ActivityTableProps {
   getEmployeeName: (item: Adjustment) => string;
   getDisplayName: (item: Adjustment) => string;
   markAsCompleted: (id: string) => Promise<void>;
+  printBarcodeLabel: (item: Adjustment) => void;
 }
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
+const PRODUCT_BARCODE_SUFFIX_PATTERN = /\s*\[CODIGO: ([^\]]+)\]\s*$/;
 
 function escapeHtml(value: string | number) {
   return String(value)
@@ -62,6 +70,90 @@ function escapeHtml(value: string | number) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+const EAN13_LEFT_ODD: Record<string, string> = {
+  "0": "0001101",
+  "1": "0011001",
+  "2": "0010011",
+  "3": "0111101",
+  "4": "0100011",
+  "5": "0110001",
+  "6": "0101111",
+  "7": "0111011",
+  "8": "0110111",
+  "9": "0001011",
+};
+const EAN13_LEFT_EVEN: Record<string, string> = {
+  "0": "0100111",
+  "1": "0110011",
+  "2": "0011011",
+  "3": "0100001",
+  "4": "0011101",
+  "5": "0111001",
+  "6": "0000101",
+  "7": "0010001",
+  "8": "0001001",
+  "9": "0010111",
+};
+const EAN13_RIGHT: Record<string, string> = {
+  "0": "1110010",
+  "1": "1100110",
+  "2": "1101100",
+  "3": "1000010",
+  "4": "1011100",
+  "5": "1001110",
+  "6": "1010000",
+  "7": "1000100",
+  "8": "1001000",
+  "9": "1110100",
+};
+const EAN13_PARITY: Record<string, string> = {
+  "0": "OOOOOO",
+  "1": "OOEOEE",
+  "2": "OOEEOE",
+  "3": "OOEEEO",
+  "4": "OEOOEE",
+  "5": "OEEOOE",
+  "6": "OEEEOO",
+  "7": "OEOEOE",
+  "8": "OEOEEO",
+  "9": "OEEOEO",
+};
+
+function buildEan13Svg(barcode: string) {
+  if (!/^\d{13}$/.test(barcode)) {
+    return "";
+  }
+
+  const parity = EAN13_PARITY[barcode[0]];
+  const leftBits = barcode
+    .slice(1, 7)
+    .split("")
+    .map((digit, index) =>
+      parity[index] === "O" ? EAN13_LEFT_ODD[digit] : EAN13_LEFT_EVEN[digit]
+    )
+    .join("");
+  const rightBits = barcode
+    .slice(7)
+    .split("")
+    .map((digit) => EAN13_RIGHT[digit])
+    .join("");
+  const bits = `101${leftBits}01010${rightBits}101`;
+  const bars = bits
+    .split("")
+    .map((bit, index) =>
+      bit === "1"
+        ? `<rect x="${index * 2}" y="0" width="2" height="44" fill="#000" />`
+        : ""
+    )
+    .join("");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="62" viewBox="0 0 190 62" role="img" aria-label="${barcode}">
+    <rect width="190" height="62" fill="#fff" />
+    <g transform="translate(0 1)">${bars}</g>
+    <text x="95" y="60" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" letter-spacing="2">${barcode}</text>
+  </svg>`;
 }
 
 function isToday(value: string) {
@@ -103,6 +195,7 @@ function ActivityTable({
   getEmployeeName,
   getDisplayName,
   markAsCompleted,
+  printBarcodeLabel,
 }: ActivityTableProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
@@ -205,7 +298,46 @@ function ActivityTable({
                     {new Date(item.created_at).toLocaleString()}
                   </td>
                   <td className="p-4 text-right">
-                    {item.status === "pending" ? (
+                    {isCreated ? (
+                      item.barcode ? (
+                        <div className="flex flex-col items-end gap-2">
+                          {item.deleted_from_tallergp && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/20 text-xs font-bold">
+                              <AlertTriangle size={14} />
+                              Borrado de TallerGP
+                            </span>
+                          )}
+                          {item.status === "completed" && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold">
+                              <Barcode size={14} />
+                              Etiqueta impresa
+                            </span>
+                          )}
+                          <button
+                            onClick={() => printBarcodeLabel(item)}
+                            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg border border-cyan-500 transition-all flex items-center gap-1 ml-auto"
+                          >
+                            <Printer size={16} />
+                            Imprimir
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-end gap-2">
+                          {item.deleted_from_tallergp && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/20 text-xs font-bold">
+                              <AlertTriangle size={14} />
+                              Borrado de TallerGP
+                            </span>
+                          )}
+                          {!item.deleted_from_tallergp && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 text-xs font-bold">
+                              <AlertTriangle size={14} />
+                              Sin codigo
+                            </span>
+                          )}
+                        </div>
+                      )
+                    ) : item.status === "pending" ? (
                       <button
                         onClick={() => markAsCompleted(item.id)}
                         className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-lg border border-zinc-700 transition-all flex items-center gap-1 ml-auto"
@@ -213,11 +345,6 @@ function ActivityTable({
                         <Clock size={16} />
                         Pendiente
                       </button>
-                    ) : isCreated ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold">
-                        <PackagePlus size={14} />
-                        Registrado
-                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-bold">
                         <Check size={14} />
@@ -260,11 +387,19 @@ export default function AdminPanel() {
   }, []);
 
   const getDisplayName = useCallback((item: Adjustment) => {
+    if (item.material_name) {
+      return item.material_name;
+    }
+
     const withoutProductPrefix = item.name?.startsWith(PRODUCT_CREATED_PREFIX)
       ? item.name.slice(PRODUCT_CREATED_PREFIX.length)
       : item.name;
 
-    return withoutProductPrefix?.replace(EMPLOYEE_PREFIX_PATTERN, "") || "";
+    return (
+      withoutProductPrefix
+        ?.replace(EMPLOYEE_PREFIX_PATTERN, "")
+        .replace(PRODUCT_BARCODE_SUFFIX_PATTERN, "") || ""
+    );
   }, []);
 
   const stockMovements = useMemo(
@@ -416,6 +551,84 @@ export default function AdminPanel() {
     }
   };
 
+  const printBarcodeLabel = async (item: Adjustment) => {
+    if (!item.barcode) {
+      return;
+    }
+
+    const svg = buildEan13Svg(item.barcode);
+    const articleName = getDisplayName(item);
+    const labelWindow = window.open("", "_blank", "width=420,height=360");
+
+    if (!labelWindow) {
+      return;
+    }
+
+    labelWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Etiqueta ${escapeHtml(item.barcode)}</title>
+  <style>
+    @page { size: 62mm 29mm; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { width: 62mm; height: 29mm; margin: 0; overflow: hidden; background: #fff; }
+    body { font-family: Arial, sans-serif; color: #000; }
+    .label {
+      width: 62mm;
+      height: 29mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1mm;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      overflow: hidden;
+      padding: 1mm 2mm;
+    }
+    .article {
+      width: 58mm;
+      max-height: 5mm;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      text-align: center;
+      font-size: 9px;
+      line-height: 1.1;
+      font-weight: 700;
+    }
+    svg {
+      width: 56mm;
+      height: 20mm;
+      display: block;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    @media print {
+      html, body, .label { width: 62mm; height: 29mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="label">
+    <div class="article">${escapeHtml(articleName)}</div>
+    ${svg}
+  </div>
+  <script>
+    window.addEventListener("load", () => {
+      window.print();
+      window.setTimeout(() => window.close(), 500);
+    });
+  </script>
+</body>
+</html>`);
+    labelWindow.document.close();
+    if (item.status === "pending") {
+      await markAsCompleted(item.id);
+    }
+  };
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -433,6 +646,7 @@ export default function AdminPanel() {
       return {
         Fecha: new Date(item.created_at).toLocaleString(),
         Referencia: item.reference,
+        Codigo: item.barcode || "",
         Artículo: getDisplayName(item),
         Empleado: isCreated ? "" : getEmployeeName(item),
         "Stock anterior": isCreated ? "" : item.quantity_before,
@@ -453,6 +667,7 @@ export default function AdminPanel() {
     const headers = [
       "Fecha",
       "Referencia",
+      "Codigo",
       "Artículo",
       "Empleado",
       "Stock anterior",
@@ -645,6 +860,7 @@ export default function AdminPanel() {
                     getEmployeeName={getEmployeeName}
                     getDisplayName={getDisplayName}
                     markAsCompleted={markAsCompleted}
+                    printBarcodeLabel={printBarcodeLabel}
                   />
                 )}
               </div>
@@ -681,6 +897,7 @@ export default function AdminPanel() {
                 getEmployeeName={getEmployeeName}
                 getDisplayName={getDisplayName}
                 markAsCompleted={markAsCompleted}
+                printBarcodeLabel={printBarcodeLabel}
               />
             )}
           </ViewSection>
@@ -715,6 +932,7 @@ export default function AdminPanel() {
                 getEmployeeName={getEmployeeName}
                 getDisplayName={getDisplayName}
                 markAsCompleted={markAsCompleted}
+                printBarcodeLabel={printBarcodeLabel}
               />
             )}
           </ViewSection>

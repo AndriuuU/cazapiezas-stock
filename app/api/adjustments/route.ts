@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import axios from "axios";
 
 interface StockAdjustment {
+  id?: string;
   material_id: string;
   reference: string;
   name: string;
@@ -10,10 +11,15 @@ interface StockAdjustment {
   quantity_after: number;
   difference: number;
   status: string;
+  barcode?: string;
+  material_name?: string;
+  deleted_from_tallergp?: boolean;
 }
 
 const EMPLOYEES_REFERENCE = "__EMPLOYEES__";
 const EMPLOYEE_PREFIX = "[EMPLEADO: ";
+const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
+const PRODUCT_BARCODE_SUFFIX_PATTERN = /\s*\[CODIGO: ([^\]]+)\]\s*$/;
 
 const tallergpClient = axios.create({
   baseURL: process.env.TALLERGP_URL || process.env.NEXT_PUBLIC_TALLERGP_URL,
@@ -85,6 +91,58 @@ async function getLatestAdjustments() {
   return requestSupabase<StockAdjustment[]>(
     `stock_adjustments?select=*&reference=neq.${EMPLOYEES_REFERENCE}&order=created_at.desc&limit=100`
   );
+}
+
+async function fetchMaterialsByLookupKey() {
+  const materialsByKey = new Map<string, { barcode?: string; name?: string }>();
+  let page = 1;
+  let hasMorePages = true;
+
+  while (hasMorePages) {
+    const response = await tallergpClient.get("/materials", {
+      params: {
+        page,
+        per_page: 100,
+      },
+    });
+    const materials = response.data.data || response.data || [];
+
+    for (const material of materials) {
+      const barcode = String(
+        material.barcode || material.ean || material.serial_number || ""
+      ).trim();
+      const name = String(material.name || material.description || "").trim();
+
+      for (const key of [material.material_id, material.reference]) {
+        const lookupKey = String(key || "").trim();
+
+        if (lookupKey) {
+          materialsByKey.set(lookupKey, {
+            barcode: barcode || undefined,
+            name: name || undefined,
+          });
+        }
+      }
+    }
+
+    if (response.data.pagination) {
+      hasMorePages = page < response.data.pagination.total_pages;
+    } else {
+      hasMorePages = materials.length === 100;
+    }
+
+    page++;
+  }
+
+  return materialsByKey;
+}
+
+function isProductCreated(item: StockAdjustment) {
+  return item.status === "created" || item.name?.startsWith(PRODUCT_CREATED_PREFIX);
+}
+
+function getSnapshotBarcode(name: string) {
+  return name.match(PRODUCT_BARCODE_SUFFIX_PATTERN)?.[1] || "";
 }
 
 async function updateAdjustmentStatus(id: string, status: string) {
@@ -174,8 +232,23 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     const data = await getLatestAdjustments();
+    const materialsByKey = await fetchMaterialsByLookupKey();
+    const enrichedData = data.map((item) => {
+      const material =
+        materialsByKey.get(String(item.material_id || "")) ||
+        materialsByKey.get(String(item.reference || ""));
+      const snapshotBarcode = getSnapshotBarcode(item.name || "");
+      const created = isProductCreated(item);
 
-    return NextResponse.json(data);
+      return {
+        ...item,
+        barcode: material?.barcode || snapshotBarcode || undefined,
+        material_name: material?.name,
+        deleted_from_tallergp: created && !material,
+      };
+    });
+
+    return NextResponse.json(enrichedData);
   } catch (error: unknown) {
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
