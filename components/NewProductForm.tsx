@@ -1,9 +1,12 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import axios from "axios";
 import { AlertCircle, Camera, Loader2, PackagePlus, Save, X } from "lucide-react";
-import { loadAllMaterials } from "@/services/cache";
+import {
+  getAllMaterialsFromCache,
+  loadAllMaterials,
+} from "@/services/cache";
 import Scanner from "./Scanner";
 
 interface NewProductFormProps {
@@ -41,6 +44,70 @@ export default function NewProductForm({
   const [saving, setSaving] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [error, setError] = useState("");
+  const validation = useMemo(() => {
+    const materials = getAllMaterialsFromCache();
+    const reference = form.reference.trim().toUpperCase();
+    const barcode = form.serial_number.trim();
+    const description = form.description.trim();
+    const quantity = Number(form.quantity || 0);
+    const cost = form.cost === "" ? undefined : Number(form.cost);
+    const pvp = form.pvp === "" ? undefined : Number(form.pvp);
+    const taxRate = Number(form.tax_rate || 0);
+    const blocking: string[] = [];
+    const warnings: string[] = [];
+
+    if (
+      reference &&
+      materials.some((material) => material.reference?.toUpperCase() === reference)
+    ) {
+      blocking.push("La referencia ya existe en el catalogo.");
+    }
+
+    if (
+      barcode &&
+      materials.some(
+        (material) =>
+          material.barcode === barcode ||
+          material.ean === barcode ||
+          material.serial_number === barcode
+      )
+    ) {
+      blocking.push("El codigo de barras ya existe en otro producto.");
+    }
+
+    if (description && description.length < 3) {
+      warnings.push("El nombre parece demasiado corto.");
+    }
+
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      blocking.push("El stock no puede ser negativo.");
+    }
+
+    if (cost !== undefined && (!Number.isFinite(cost) || cost < 0)) {
+      blocking.push("El coste no puede ser negativo.");
+    }
+
+    if (pvp !== undefined && (!Number.isFinite(pvp) || pvp < 0)) {
+      blocking.push("El PVP no puede ser negativo.");
+    }
+
+    if (
+      cost !== undefined &&
+      pvp !== undefined &&
+      Number.isFinite(cost) &&
+      Number.isFinite(pvp) &&
+      pvp > 0 &&
+      cost > pvp
+    ) {
+      warnings.push("El coste es mayor que el PVP.");
+    }
+
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 30) {
+      warnings.push("El IVA parece raro. Revisa el porcentaje.");
+    }
+
+    return { blocking, warnings };
+  }, [form]);
 
   const updateField = (field: keyof ProductFormState, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -60,6 +127,11 @@ export default function NewProductForm({
       return;
     }
 
+    if (validation.blocking.length > 0) {
+      setError(validation.blocking.join(" "));
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -75,8 +147,12 @@ export default function NewProductForm({
         tax_rate: Number(form.tax_rate || 21),
       });
 
-      const materials = await loadAllMaterials(true);
-      onProductCreated(materials.length);
+      try {
+        const materials = await loadAllMaterials(true);
+        onProductCreated(materials.length);
+      } catch {
+        onProductCreated(getAllMaterialsFromCache().length);
+      }
       onClose();
     } catch (err) {
       const message = axios.isAxiosError(err)
@@ -248,6 +324,29 @@ export default function NewProductForm({
             </label>
           </div>
 
+          {(validation.blocking.length > 0 || validation.warnings.length > 0) && (
+            <div className="space-y-2">
+              {validation.blocking.map((message) => (
+                <div
+                  key={message}
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300 flex gap-2"
+                >
+                  <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                  <span>{message}</span>
+                </div>
+              ))}
+              {validation.warnings.map((message) => (
+                <div
+                  key={message}
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200 flex gap-2"
+                >
+                  <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                  <span>{message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {error && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300 flex gap-2">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
@@ -258,7 +357,7 @@ export default function NewProductForm({
           <div className="sticky bottom-0 -mx-6 -mb-6 mt-6 bg-gradient-to-t from-zinc-900 to-zinc-900 p-4 border-t border-zinc-700">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || validation.blocking.length > 0}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-semibold shadow-lg shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {saving ? (

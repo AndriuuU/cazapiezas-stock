@@ -11,6 +11,7 @@ import {
   Clipboard,
   Clock,
   Download,
+  Eye,
   LayoutDashboard,
   Loader2,
   Package,
@@ -19,11 +20,13 @@ import {
   Printer,
   RefreshCw,
   Save,
+  SlidersHorizontal,
   Trash2,
   TrendingDown,
   TrendingUp,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { getAllMaterialsFromCache, loadAllMaterials } from "@/services/cache";
@@ -65,6 +68,15 @@ type AdminView =
   | "employees"
   | "exports";
 type SortKey = "created_at" | "employee" | "reference" | "difference";
+type LabelSize = "62x29" | "62x32";
+type LabelMode = "article-code" | "reference-code" | "code";
+
+interface LabelSettings {
+  size: LabelSize;
+  mode: LabelMode;
+  articleFontSize: number;
+  showReference: boolean;
+}
 
 interface ActivityTableProps {
   rows: Adjustment[];
@@ -76,12 +88,20 @@ interface ActivityTableProps {
   getDisplayName: (item: Adjustment) => string;
   markAsCompleted: (id: string) => Promise<void>;
   printBarcodeLabel: (item: Adjustment) => Promise<void>;
+  onOpenProduct: (item: Adjustment) => void;
 }
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
 const PRODUCT_BARCODE_SUFFIX_PATTERN = /\s*\[CODIGO: ([^\]]+)\]\s*$/;
 const PRODUCT_SNAPSHOT_SUFFIX_PATTERN = /\s*\[FICHA: ([^\]]+)\]\s*$/;
+const LABEL_SETTINGS_KEY = "cazapiezas_label_settings";
+const DEFAULT_LABEL_SETTINGS: LabelSettings = {
+  size: "62x29",
+  mode: "article-code",
+  articleFontSize: 11,
+  showReference: false,
+};
 
 function escapeHtml(value: string | number) {
   return String(value)
@@ -223,6 +243,7 @@ function ActivityTable({
   getDisplayName,
   markAsCompleted,
   printBarcodeLabel,
+  onOpenProduct,
 }: ActivityTableProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
@@ -293,6 +314,14 @@ function ActivityTable({
                     <p className="text-white font-medium mt-1 line-clamp-1">
                       {getDisplayName(item)}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => onOpenProduct(item)}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-zinc-400 transition-colors hover:text-white"
+                    >
+                      <Eye size={14} />
+                      Ver ficha
+                    </button>
                   </td>
                   <td className="p-4 text-zinc-300">
                     {isCreated ? "-" : getEmployeeName(item) || "-"}
@@ -400,6 +429,21 @@ export default function AdminPanel() {
   const [newEmployee, setNewEmployee] = useState("");
   const [savingEmployees, setSavingEmployees] = useState(false);
   const [employeeError, setEmployeeError] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<Adjustment | null>(null);
+  const [labelSettings, setLabelSettings] = useState<LabelSettings>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_LABEL_SETTINGS;
+    }
+
+    try {
+      return {
+        ...DEFAULT_LABEL_SETTINGS,
+        ...JSON.parse(localStorage.getItem(LABEL_SETTINGS_KEY) || "{}"),
+      };
+    } catch {
+      return DEFAULT_LABEL_SETTINGS;
+    }
+  });
 
   const isProductCreated = useCallback(
     (item: Adjustment) =>
@@ -606,13 +650,28 @@ export default function AdminPanel() {
   };
 
   const buildLabelHtml = (items: Adjustment[]) => {
+    const [labelWidth, labelHeight] = labelSettings.size
+      .split("x")
+      .map(Number);
+    const showArticle = labelSettings.mode !== "code";
+    const barcodeHeight = showArticle ? labelHeight - 13 : labelHeight - 6;
     const labels = items
       .filter((item) => item.barcode)
       .map((item) => {
         const barcode = item.barcode || "";
+        const primaryText =
+          labelSettings.mode === "reference-code" ? item.reference : getDisplayName(item);
+        const articleText =
+          labelSettings.showReference && labelSettings.mode === "article-code"
+            ? `${item.reference} - ${primaryText}`
+            : primaryText;
 
         return `<div class="label">
-    <div class="article">${escapeHtml(getDisplayName(item))}</div>
+    ${
+      showArticle
+        ? `<div class="article">${escapeHtml(articleText)}</div>`
+        : ""
+    }
     ${buildEan13Svg(barcode)}
   </div>`;
       })
@@ -624,14 +683,14 @@ export default function AdminPanel() {
   <meta charset="utf-8" />
   <title>Etiquetas Cazapiezas</title>
   <style>
-    @page { size: 62mm 29mm; margin: 0; }
+    @page { size: ${labelWidth}mm ${labelHeight}mm; margin: 0; }
     * { box-sizing: border-box; }
-    html, body { width: 62mm; height: 29mm; margin: 0; overflow: hidden; background: #fff; }
+    html, body { width: ${labelWidth}mm; height: ${labelHeight}mm; margin: 0; overflow: hidden; background: #fff; }
     body { font-family: Arial, sans-serif; color: #000; }
     .label {
-      width: 62mm;
-      height: 29mm;
-      max-height: 29mm;
+      width: ${labelWidth}mm;
+      height: ${labelHeight}mm;
+      max-height: ${labelHeight}mm;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -641,16 +700,16 @@ export default function AdminPanel() {
       page-break-inside: avoid;
       page-break-after: always;
       overflow: hidden;
-      padding: 2mm 2mm 1.8mm;
+      padding: 3mm 2mm 1.2mm;
     }
     .label:last-child { page-break-after: auto; }
     .article {
-      width: 58mm;
-      height: 8mm;
+      width: ${labelWidth - 4}mm;
+      height: ${showArticle ? 7 : 0}mm;
       overflow: hidden;
       white-space: normal;
       text-align: center;
-      font-size: 11px;
+      font-size: ${labelSettings.articleFontSize}px;
       line-height: 1.05;
       font-weight: 700;
       display: -webkit-box;
@@ -658,14 +717,14 @@ export default function AdminPanel() {
       -webkit-line-clamp: 2;
     }
     svg {
-      width: 56mm;
-      height: 16.5mm;
+      width: ${labelWidth - 6}mm;
+      height: ${barcodeHeight}mm;
       display: block;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     @media print {
-      html, body, .label { width: 62mm; height: 29mm; }
+      html, body, .label { width: ${labelWidth}mm; height: ${labelHeight}mm; }
     }
   </style>
 </head>
@@ -930,6 +989,10 @@ export default function AdminPanel() {
     void Promise.resolve().then(fetchEmployees);
   }, [fetchAdjustments, fetchEmployees]);
 
+  useEffect(() => {
+    localStorage.setItem(LABEL_SETTINGS_KEY, JSON.stringify(labelSettings));
+  }, [labelSettings]);
+
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "stock", label: "Stock", icon: PackageMinus },
@@ -1072,6 +1135,7 @@ export default function AdminPanel() {
                     getDisplayName={getDisplayName}
                     markAsCompleted={markAsCompleted}
                     printBarcodeLabel={printBarcodeLabel}
+                    onOpenProduct={setSelectedProduct}
                   />
                 )}
               </div>
@@ -1109,6 +1173,7 @@ export default function AdminPanel() {
                 getDisplayName={getDisplayName}
                 markAsCompleted={markAsCompleted}
                 printBarcodeLabel={printBarcodeLabel}
+                onOpenProduct={setSelectedProduct}
               />
             )}
           </ViewSection>
@@ -1144,6 +1209,7 @@ export default function AdminPanel() {
                 getDisplayName={getDisplayName}
                 markAsCompleted={markAsCompleted}
                 printBarcodeLabel={printBarcodeLabel}
+                onOpenProduct={setSelectedProduct}
               />
             )}
           </ViewSection>
@@ -1176,18 +1242,25 @@ export default function AdminPanel() {
               </div>
             }
           >
-            {loading ? (
-              <Loader />
-            ) : pendingLabelCreations.length === 0 ? (
-              <EmptyState text="No hay etiquetas pendientes." />
-            ) : (
-              <LabelQueue
-                rows={pendingLabelCreations}
-                getDisplayName={getDisplayName}
-                printBarcodeLabel={printBarcodeLabel}
-                markAsCompleted={markAsCompleted}
+            <div className="space-y-4">
+              <LabelSettingsPanel
+                settings={labelSettings}
+                onChange={setLabelSettings}
               />
-            )}
+
+              {loading ? (
+                <Loader />
+              ) : pendingLabelCreations.length === 0 ? (
+                <EmptyState text="No hay etiquetas pendientes." />
+              ) : (
+                <LabelQueue
+                  rows={pendingLabelCreations}
+                  getDisplayName={getDisplayName}
+                  printBarcodeLabel={printBarcodeLabel}
+                  markAsCompleted={markAsCompleted}
+                />
+              )}
+            </div>
           </ViewSection>
         )}
 
@@ -1295,6 +1368,20 @@ export default function AdminPanel() {
             </div>
           </ViewSection>
         )}
+
+        {selectedProduct && (
+          <ProductQuickView
+            item={selectedProduct}
+            material={getAllMaterialsFromCache().find(
+              (material) =>
+                material.material_id === selectedProduct.material_id ||
+                material.reference === selectedProduct.reference
+            )}
+            getDisplayName={getDisplayName}
+            onClose={() => setSelectedProduct(null)}
+            onPrint={printBarcodeLabel}
+          />
+        )}
       </div>
     </div>
   );
@@ -1380,6 +1467,288 @@ function LabelQueue({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function LabelSettingsPanel({
+  settings,
+  onChange,
+}: {
+  settings: LabelSettings;
+  onChange: (settings: LabelSettings) => void;
+}) {
+  const update = <Key extends keyof LabelSettings>(
+    key: Key,
+    value: LabelSettings[Key]
+  ) => {
+    onChange({ ...settings, [key]: value });
+  };
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <SlidersHorizontal className="text-cyan-400" size={20} />
+        <h3 className="font-bold text-white">Configuracion de etiqueta</h3>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-zinc-300">Tamano</span>
+          <select
+            value={settings.size}
+            onChange={(event) => update("size", event.target.value as LabelSize)}
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:outline-none focus:border-red-500"
+          >
+            <option value="62x29">62 x 29 mm</option>
+            <option value="62x32">62 x 32 mm</option>
+          </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-zinc-300">Contenido</span>
+          <select
+            value={settings.mode}
+            onChange={(event) => update("mode", event.target.value as LabelMode)}
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:outline-none focus:border-red-500"
+          >
+            <option value="article-code">Articulo + codigo</option>
+            <option value="reference-code">Referencia + codigo</option>
+            <option value="code">Solo codigo</option>
+          </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="text-sm font-medium text-zinc-300">Texto</span>
+          <input
+            type="number"
+            min="8"
+            max="16"
+            value={settings.articleFontSize}
+            onChange={(event) =>
+              update("articleFontSize", Number(event.target.value || 11))
+            }
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-white focus:outline-none focus:border-red-500"
+          />
+        </label>
+
+        <label className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200">
+          <input
+            type="checkbox"
+            checked={settings.showReference}
+            onChange={(event) => update("showReference", event.target.checked)}
+            className="h-4 w-4 accent-red-500"
+            disabled={settings.mode !== "article-code"}
+          />
+          Mostrar referencia
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function ProductQuickView({
+  item,
+  material,
+  getDisplayName,
+  onClose,
+  onPrint,
+}: {
+  item: Adjustment;
+  material?: Material;
+  getDisplayName: (item: Adjustment) => string;
+  onClose: () => void;
+  onPrint: (item: Adjustment) => Promise<void>;
+}) {
+  const snapshot = item.product_snapshot;
+  const currentBarcode =
+    item.barcode || material?.barcode || material?.ean || material?.serial_number || "";
+  const currentTaxRate = toOptionalNumber(material?.tax_rate ?? material?.iva);
+  const currentPvp = toOptionalNumber(material?.pvp);
+  const currentPvpWithTax =
+    currentPvp !== undefined && currentTaxRate !== undefined
+      ? currentPvp * (1 + currentTaxRate / 100)
+      : undefined;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-4 backdrop-blur-sm md:items-center md:justify-center">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 p-4">
+          <div>
+            <p className="font-mono text-sm font-bold text-cyan-400">
+              {item.reference}
+            </p>
+            <h2 className="text-xl font-bold text-white">{getDisplayName(item)}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          <div className="flex flex-wrap gap-2">
+            {item.deleted_from_tallergp ? (
+              <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-sm font-bold text-red-300">
+                Borrado de TallerGP
+              </span>
+            ) : material ? (
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-sm font-bold text-emerald-300">
+                Activo en catalogo local
+              </span>
+            ) : (
+              <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-sm font-bold text-amber-300">
+                Sin datos actuales en cache
+              </span>
+            )}
+            {currentBarcode && (
+              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 font-mono text-sm font-bold text-cyan-300">
+                {currentBarcode}
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <InfoBox label="Stock actual" value={material?.quantity ?? "-"} />
+            <InfoBox label="Coste actual" value={formatMoney(material?.cost)} />
+            <InfoBox label="PVP actual" value={formatMoney(material?.pvp)} />
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <h3 className="mb-3 font-bold text-white">Datos actuales del catalogo</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <InfoLine label="ID TallerGP" value={material?.material_id || item.material_id} />
+              <InfoLine label="Referencia" value={material?.reference || item.reference} />
+              <InfoLine
+                label="Articulo"
+                value={material?.name || material?.description || getDisplayName(item)}
+              />
+              <InfoLine label="Codigo" value={currentBarcode || "-"} />
+              <InfoLine label="Stock" value={material?.quantity ?? "-"} />
+              <InfoLine label="Unidad" value={material?.unit || "-"} />
+              <InfoLine label="Coste" value={formatMoney(material?.cost)} />
+              <InfoLine label="PVP sin IVA" value={formatMoney(currentPvp)} />
+              <InfoLine label="IVA" value={formatPercent(currentTaxRate)} />
+              <InfoLine label="PVP con IVA" value={formatMoney(currentPvpWithTax)} />
+              <InfoLine
+                label="Alerta stock"
+                value={material?.alert_threshold ?? "-"}
+              />
+              <InfoLine label="Creado" value={formatDate(material?.created_at)} />
+              <InfoLine label="Actualizado" value={formatDate(material?.updated_at)} />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <h3 className="mb-3 font-bold text-white">Ficha historica guardada</h3>
+            {snapshot ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <InfoLine label="Referencia" value={snapshot.reference || item.reference} />
+                <InfoLine label="Articulo" value={snapshot.name || getDisplayName(item)} />
+                <InfoLine label="Codigo" value={snapshot.barcode || currentBarcode || "-"} />
+                <InfoLine label="Stock inicial" value={snapshot.quantity ?? item.quantity_after} />
+                <InfoLine label="Coste" value={formatMoney(snapshot.cost)} />
+                <InfoLine label="PVP sin IVA" value={formatMoney(snapshot.pvp)} />
+                <InfoLine label="IVA" value={formatPercent(snapshot.tax_rate)} />
+                <InfoLine
+                  label="PVP con IVA"
+                  value={
+                    snapshot.pvp !== undefined && snapshot.tax_rate !== undefined
+                      ? formatMoney(snapshot.pvp * (1 + snapshot.tax_rate / 100))
+                      : "-"
+                  }
+                />
+                <InfoLine
+                  label="Alerta stock"
+                  value={snapshot.alert_threshold ?? "-"}
+                />
+                <InfoLine label="Fecha alta" value={formatDate(snapshot.created_at)} />
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400">
+                Este registro es anterior a la ficha historica completa o es un
+                movimiento de stock. Arriba se muestran los datos actuales del catalogo.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <h3 className="mb-3 font-bold text-white">Movimiento registrado</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <InfoLine label="Fecha" value={formatDate(item.created_at)} />
+              <InfoLine label="Estado" value={item.status || "-"} />
+              <InfoLine label="Antes" value={item.quantity_before} />
+              <InfoLine label="Despues" value={item.quantity_after} />
+              <InfoLine label="Diferencia" value={item.difference} />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onPrint({ ...item, barcode: currentBarcode })}
+              disabled={!currentBarcode}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+            >
+              <Printer size={16} />
+              Imprimir etiqueta
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatMoney(value?: number) {
+  const numberValue = toOptionalNumber(value);
+
+  return numberValue !== undefined ? `${numberValue.toFixed(2)} EUR` : "-";
+}
+
+function formatPercent(value?: number) {
+  const numberValue = toOptionalNumber(value);
+
+  return numberValue !== undefined ? `${numberValue}%` : "-";
+}
+
+function formatDate(value?: string) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function toOptionalNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function InfoBox({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="mt-1 text-lg font-bold text-white">{value}</p>
+    </div>
+  );
+}
+
+function InfoLine({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className="text-sm font-semibold text-zinc-100">{value}</p>
     </div>
   );
 }

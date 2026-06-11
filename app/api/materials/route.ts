@@ -16,6 +16,16 @@ const tallergpClient = axios.create({
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const PRODUCT_BARCODE_SUFFIX_PREFIX = " [CODIGO: ";
 const PRODUCT_SNAPSHOT_SUFFIX_PREFIX = " [FICHA: ";
+const PRODUCT_KEYS_CACHE_MS = 5 * 60 * 1000;
+let productKeysCache:
+  | {
+      fetchedAt: number;
+      data: {
+        barcodes: Set<string>;
+        references: Set<string>;
+      };
+    }
+  | undefined;
 
 interface ProductSnapshot {
   reference: string;
@@ -108,8 +118,16 @@ function materialHasBarcode(material: Record<string, unknown>, barcode: string) 
   );
 }
 
-async function fetchExistingBarcodes() {
+async function fetchExistingProductKeys() {
+  if (
+    productKeysCache &&
+    Date.now() - productKeysCache.fetchedAt < PRODUCT_KEYS_CACHE_MS
+  ) {
+    return productKeysCache.data;
+  }
+
   const barcodes = new Set<string>();
+  const references = new Set<string>();
   let page = 1;
   let hasMorePages = true;
 
@@ -123,6 +141,12 @@ async function fetchExistingBarcodes() {
     const materials = response.data.data || response.data || [];
 
     for (const material of materials) {
+      const reference = String(material?.reference || "").trim().toUpperCase();
+
+      if (reference) {
+        references.add(reference);
+      }
+
       for (const key of ["barcode", "ean", "serial_number"]) {
         const value = String(material?.[key] || "").trim();
 
@@ -141,7 +165,33 @@ async function fetchExistingBarcodes() {
     page++;
   }
 
-  return barcodes;
+  const data = { barcodes, references };
+
+  productKeysCache = {
+    fetchedAt: Date.now(),
+    data,
+  };
+
+  return data;
+}
+
+async function getExistingProductKeys() {
+  try {
+    return await fetchExistingProductKeys();
+  } catch (error) {
+    if (productKeysCache) {
+      console.error("Using stale product keys cache after TallerGP error:", error);
+      return productKeysCache.data;
+    }
+
+    if (axios.isAxiosError(error) && error.response?.status === 429) {
+      throw new Error(
+        "TallerGP ha limitado temporalmente las peticiones. Espera un minuto y vuelve a registrar el producto."
+      );
+    }
+
+    throw error;
+  }
 }
 
 function generateUniqueInternalBarcode(existingBarcodes: Set<string>) {
@@ -170,16 +220,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const existingBarcodes = await fetchExistingBarcodes();
+    const existingKeys = await getExistingProductKeys();
 
-    if (requestedBarcode && existingBarcodes.has(requestedBarcode)) {
+    if (existingKeys.references.has(reference)) {
+      return NextResponse.json(
+        { error: "Esa referencia ya existe en otro producto" },
+        { status: 409 }
+      );
+    }
+
+    if (requestedBarcode && existingKeys.barcodes.has(requestedBarcode)) {
       return NextResponse.json(
         { error: "Ese codigo de barras ya existe en otro producto" },
         { status: 409 }
       );
     }
 
-    const serialNumber = requestedBarcode || generateUniqueInternalBarcode(existingBarcodes);
+    const serialNumber = requestedBarcode || generateUniqueInternalBarcode(existingKeys.barcodes);
     const payload = {
       reference,
       description,
@@ -192,6 +249,7 @@ export async function POST(request: Request) {
     };
 
     const response = await tallergpClient.post("/materials", payload);
+    productKeysCache = undefined;
     const createdMaterial = response.data || {};
     const createdBarcode =
       String(createdMaterial.barcode || createdMaterial.ean || createdMaterial.serial_number || "").trim() ||
