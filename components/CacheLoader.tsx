@@ -138,7 +138,12 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
                 <p className="text-xs text-zinc-500 mb-1">Actualizado</p>
                 <p className="text-sm font-mono text-zinc-200">
                   {cacheInfo.lastUpdated
-                    ? new Date(cacheInfo.lastUpdated).toLocaleString()
+                    ? (() => {
+                        const date = new Date(cacheInfo.lastUpdated);
+                        const dateStr = date.toLocaleDateString('es-ES');
+                        const timeStr = date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        return `${dateStr} ${timeStr}`;
+                      })()
                     : "Nunca"}
                 </p>
               </div>

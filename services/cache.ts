@@ -297,7 +297,7 @@ export function clearCache(): void {
 export function getCacheInfo(): {
   itemCount: number;
   sizeKB: number;
-  lastUpdated: string | null;
+  lastUpdated: number | null;
   isExpired: boolean;
 } {
   if (!isBrowser()) {
@@ -326,9 +326,7 @@ export function getCacheInfo(): {
     return {
       itemCount: materials?.length || 0,
       sizeKB: Math.round(sizeKB * 100) / 100,
-      lastUpdated: timestamp
-        ? new Date(Number(timestamp)).toLocaleString()
-        : null,
+      lastUpdated: timestamp ? Number(timestamp) : null,
       isExpired: isCacheExpired(),
     };
   } catch (error) {
