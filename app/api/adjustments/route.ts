@@ -43,11 +43,9 @@ let materialsLookupCache:
   | undefined;
 
 const tallergpClient = axios.create({
-  baseURL: process.env.TALLERGP_URL || process.env.NEXT_PUBLIC_TALLERGP_URL,
+  baseURL: process.env.TALLERGP_URL,
   headers: {
-    Authorization: `Bearer ${
-      process.env.TALLERGP_TOKEN || process.env.NEXT_PUBLIC_TALLERGP_TOKEN
-    }`,
+    Authorization: `Bearer ${process.env.TALLERGP_TOKEN}`,
     "Content-Type": "application/json",
   },
 });

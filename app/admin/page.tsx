@@ -11,16 +11,20 @@ import {
   Clipboard,
   Clock,
   Download,
+  Edit3,
   Eye,
+  Filter,
   LayoutDashboard,
   Loader2,
   Package,
+  PackageSearch,
   PackageMinus,
   PackagePlus,
   Printer,
   RefreshCw,
   Save,
   SlidersHorizontal,
+  Search,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -29,7 +33,12 @@ import {
   X,
 } from "lucide-react";
 import Logo from "@/components/Logo";
-import { getAllMaterialsFromCache, loadAllMaterials } from "@/services/cache";
+import { createInternalEan13 } from "@/lib/barcodes";
+import {
+  getAllMaterialsFromCache,
+  loadAllMaterials,
+  updateMaterialInCache,
+} from "@/services/cache";
 import { Material } from "@/types/material";
 
 interface Adjustment {
@@ -62,14 +71,29 @@ interface ProductSnapshot {
 
 type AdminView =
   | "dashboard"
+  | "materials"
   | "stock"
   | "products"
   | "labels"
   | "employees"
   | "exports";
 type SortKey = "created_at" | "employee" | "reference" | "difference";
+type MaterialStockFilter = "all" | "available" | "low" | "out";
 type LabelSize = "62x29" | "62x32";
 type LabelMode = "article-code" | "reference-code" | "code";
+
+interface MaterialFormState {
+  material_id: string;
+  reference: string;
+  name: string;
+  barcode: string;
+  quantity: number;
+  unit: string;
+  cost: string;
+  pvp: string;
+  tax_rate: string;
+  alert_threshold: string;
+}
 
 interface LabelSettings {
   size: LabelSize;
@@ -89,6 +113,8 @@ interface ActivityTableProps {
   markAsCompleted: (id: string) => Promise<void>;
   printBarcodeLabel: (item: Adjustment) => Promise<void>;
   onOpenProduct: (item: Adjustment) => void;
+  removeProductLocally?: (id: string) => Promise<void>;
+  removingProducts?: Set<string>;
 }
 
 const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
@@ -244,6 +270,8 @@ function ActivityTable({
   markAsCompleted,
   printBarcodeLabel,
   onOpenProduct,
+  removeProductLocally,
+  removingProducts = new Set(),
 }: ActivityTableProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
@@ -295,9 +323,18 @@ function ActivityTable({
           <tbody className="divide-y divide-zinc-800 text-sm">
             {rows.map((item) => {
               const isCreated = isProductCreated(item);
+              const isRemoving = removingProducts.has(item.id);
 
               return (
-                <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                <tr
+                  key={item.id}
+                  className={`hover:bg-zinc-800/30 transition-all ${
+                    isRemoving ? "opacity-50 animate-pulse" : ""
+                  }`}
+                  style={{
+                    animation: isRemoving ? "fadeOut 0.3s ease-out forwards" : "none",
+                  }}
+                >
                   <td className="p-4">
                     <div className="flex items-center gap-2">
                       <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded text-cyan-400 font-bold border border-zinc-800 flex items-center gap-1">
@@ -357,33 +394,44 @@ function ActivityTable({
                     {isCreated ? (
                       item.barcode ? (
                         <div className="flex flex-col items-end gap-2">
-                          {item.deleted_from_tallergp && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/20 text-xs font-bold">
-                              <AlertTriangle size={14} />
-                              Borrado de TallerGP
-                            </span>
+                          {item.deleted_from_tallergp && removeProductLocally && (
+                            <button
+                              onClick={() => removeProductLocally(item.id)}
+                              disabled={isRemoving}
+                              className="px-4 py-2 bg-red-900/40 hover:bg-red-900/60 disabled:opacity-50 disabled:cursor-not-allowed text-red-300 font-semibold rounded-lg border border-red-800 transition-all flex items-center gap-1 ml-auto"
+                            >
+                              <Trash2 size={16} />
+                              Eliminar
+                            </button>
                           )}
-                          {item.status === "completed" && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold">
-                              <Barcode size={14} />
-                              Etiqueta impresa
-                            </span>
+                          {!item.deleted_from_tallergp && (
+                            <>
+                              {item.status === "completed" && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold">
+                                  <Barcode size={14} />
+                                  Etiqueta impresa
+                                </span>
+                              )}
+                              <button
+                                onClick={() => printBarcodeLabel(item)}
+                                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg border border-cyan-500 transition-all flex items-center gap-1 ml-auto"
+                              >
+                                <Printer size={16} />
+                                Imprimir
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => printBarcodeLabel(item)}
-                            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold rounded-lg border border-cyan-500 transition-all flex items-center gap-1 ml-auto"
-                          >
-                            <Printer size={16} />
-                            Imprimir
-                          </button>
                         </div>
                       ) : (
                         <div className="flex flex-col items-end gap-2">
-                          {item.deleted_from_tallergp && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-red-500/10 text-red-300 border border-red-500/20 text-xs font-bold">
-                              <AlertTriangle size={14} />
-                              Borrado de TallerGP
-                            </span>
+                          {item.deleted_from_tallergp && removeProductLocally && (
+                            <button
+                              onClick={() => removeProductLocally(item.id)}
+                              className="px-4 py-2 bg-red-900/40 hover:bg-red-900/60 text-red-300 font-semibold rounded-lg border border-red-800 transition-all flex items-center gap-1 ml-auto"
+                            >
+                              <Trash2 size={16} />
+                              Eliminar
+                            </button>
                           )}
                           {!item.deleted_from_tallergp && (
                             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20 text-xs font-bold">
@@ -430,6 +478,7 @@ export default function AdminPanel() {
   const [savingEmployees, setSavingEmployees] = useState(false);
   const [employeeError, setEmployeeError] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<Adjustment | null>(null);
+  const [removingProducts, setRemovingProducts] = useState<Set<string>>(new Set());
   const [labelSettings, setLabelSettings] = useState<LabelSettings>(() => {
     if (typeof window === "undefined") {
       return DEFAULT_LABEL_SETTINGS;
@@ -649,6 +698,26 @@ export default function AdminPanel() {
     await Promise.all(pendingItems.map((item) => markAsCompleted(item.id)));
   };
 
+  const removeProductLocally = async (id: string) => {
+    if (!window.confirm("¿Estás seguro de que quieres eliminar este producto del listado local?")) {
+      return;
+    }
+    
+    // Marcar como eliminando para mostrar animación
+    setRemovingProducts((current) => new Set([...current, id]));
+    
+    // Esperar a que termine la animación (300ms)
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    
+    // Remover del estado
+    setAdjustments((current) => current.filter((item) => item.id !== id));
+    setRemovingProducts((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  };
+
   const buildLabelHtml = (items: Adjustment[]) => {
     const [labelWidth, labelHeight] = labelSettings.size
       .split("x")
@@ -760,6 +829,40 @@ export default function AdminPanel() {
 
   const printBarcodeLabel = async (item: Adjustment) => {
     await printBarcodeLabels([item]);
+  };
+
+  const printMaterialLabel = (material: Material) => {
+    const barcode =
+      String(material.barcode || material.ean || material.serial_number || "").trim();
+
+    if (!barcode) {
+      return;
+    }
+
+    const labelWindow = window.open("", "_blank", "width=420,height=360");
+
+    if (!labelWindow) {
+      return;
+    }
+
+    labelWindow.document.write(
+      buildLabelHtml([
+        {
+          id: material.material_id,
+          material_id: material.material_id,
+          reference: material.reference,
+          name: material.name || material.description || material.reference,
+          material_name: material.name || material.description || material.reference,
+          quantity_before: Number(material.quantity ?? 0),
+          quantity_after: Number(material.quantity ?? 0),
+          difference: 0,
+          status: "completed",
+          created_at: new Date().toISOString(),
+          barcode,
+        },
+      ])
+    );
+    labelWindow.document.close();
   };
 
   const handleSort = (key: SortKey) => {
@@ -995,6 +1098,7 @@ export default function AdminPanel() {
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "materials", label: "Materiales", icon: PackageSearch },
     { id: "stock", label: "Stock", icon: PackageMinus },
     { id: "products", label: "Altas", icon: PackagePlus },
     { id: "labels", label: "Etiquetas", icon: Barcode },
@@ -1004,6 +1108,18 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-12">
+      <style>{`
+        @keyframes fadeOut {
+          from {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          to {
+            opacity: 0;
+            transform: translateX(20px);
+          }
+        }
+      `}</style>
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center mb-8">
           <div className="flex items-center gap-4">
@@ -1143,6 +1259,18 @@ export default function AdminPanel() {
           </div>
         )}
 
+        {view === "materials" && (
+          <ViewSection
+            title="Materiales"
+            description="Busca, filtra y modifica el catalogo guardado en TallerGP."
+          >
+            <MaterialsAdminPanel
+              onCatalogChanged={refreshLowStock}
+              onPrintMaterial={printMaterialLabel}
+            />
+          </ViewSection>
+        )}
+
         {view === "stock" && (
           <ViewSection
             title="Movimientos de stock"
@@ -1210,6 +1338,8 @@ export default function AdminPanel() {
                 markAsCompleted={markAsCompleted}
                 printBarcodeLabel={printBarcodeLabel}
                 onOpenProduct={setSelectedProduct}
+                removeProductLocally={removeProductLocally}
+                removingProducts={removingProducts}
               />
             )}
           </ViewSection>
@@ -1258,6 +1388,8 @@ export default function AdminPanel() {
                   getDisplayName={getDisplayName}
                   printBarcodeLabel={printBarcodeLabel}
                   markAsCompleted={markAsCompleted}
+                  removeProductLocally={removeProductLocally}
+                  removingProducts={removingProducts}
                 />
               )}
             </div>
@@ -1387,6 +1519,626 @@ export default function AdminPanel() {
   );
 }
 
+function MaterialsAdminPanel({
+  onCatalogChanged,
+  onPrintMaterial,
+}: {
+  onCatalogChanged: () => Promise<void>;
+  onPrintMaterial: (material: Material) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [stockFilter, setStockFilter] = useState<MaterialStockFilter>("all");
+  const [minStock, setMinStock] = useState("");
+  const [maxStock, setMaxStock] = useState("");
+  const [allMaterials, setAllMaterials] = useState<Material[]>([]);
+  const [materialsPage, setMaterialsPage] = useState(1);
+  const [loadingMaterials, setLoadingMaterials] = useState(false);
+  const [materialsError, setMaterialsError] = useState("");
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
+  const [savingMaterial, setSavingMaterial] = useState(false);
+  const [materialSavedMessage, setMaterialSavedMessage] = useState("");
+  const perPage = 30;
+
+  const loadMaterialsForAdmin = useCallback(
+    async (forceRefresh = false) => {
+      setLoadingMaterials(true);
+      setMaterialsError("");
+
+      try {
+        const cachedMaterials = getAllMaterialsFromCache();
+        const materials =
+          forceRefresh || cachedMaterials.length === 0
+            ? await loadAllMaterials(forceRefresh)
+            : cachedMaterials;
+
+        setAllMaterials(materials);
+        setMaterialsPage(1);
+      } catch (error) {
+        const message =
+          axios.isAxiosError(error) && error.response?.status === 429
+            ? "TallerGP ha limitado temporalmente las peticiones. Espera un momento antes de actualizar de nuevo."
+            : axios.isAxiosError(error)
+              ? String(error.response?.data?.error || error.message)
+              : "Error desconocido";
+
+        const cachedMaterials = getAllMaterialsFromCache();
+
+        if (cachedMaterials.length > 0) {
+          setAllMaterials(cachedMaterials);
+          setMaterialsError(
+            `TallerGP ha limitado la actualizacion. Mostrando catalogo local: ${message}`
+          );
+        } else {
+          setMaterialsError(`No se pudieron cargar los materiales: ${message}`);
+        }
+      } finally {
+        setLoadingMaterials(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadMaterialsForAdmin(false));
+  }, [loadMaterialsForAdmin]);
+
+  const filteredMaterials = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const minStockValue = toOptionalNumber(minStock);
+    const maxStockValue = toOptionalNumber(maxStock);
+
+    return allMaterials.filter((material) => {
+      const quantity = Number(material.quantity ?? 0);
+      const threshold = Number(material.alert_threshold ?? 2);
+      const searchText = [
+        material.reference,
+        material.name,
+        material.description,
+        material.barcode,
+        material.ean,
+        material.serial_number,
+        material.material_id,
+      ]
+        .map((value) => String(value || "").toLowerCase())
+        .join(" ");
+      const matchesQuery = normalizedQuery
+        ? searchText.includes(normalizedQuery)
+        : true;
+      const matchesStock =
+        stockFilter === "out"
+          ? quantity <= 0
+          : stockFilter === "low"
+            ? quantity > 0 && quantity <= threshold
+            : stockFilter === "available"
+              ? quantity > 0
+              : true;
+      const matchesMin = minStockValue === undefined || quantity >= minStockValue;
+      const matchesMax = maxStockValue === undefined || quantity <= maxStockValue;
+
+      return matchesQuery && matchesStock && matchesMin && matchesMax;
+    });
+  }, [allMaterials, maxStock, minStock, query, stockFilter]);
+
+  const totalMaterials = filteredMaterials.length;
+  const totalPages = Math.max(1, Math.ceil(totalMaterials / perPage));
+  const safeMaterialsPage = Math.min(materialsPage, totalPages);
+  const materials = useMemo(() => {
+    const start = (safeMaterialsPage - 1) * perPage;
+
+    return filteredMaterials.slice(start, start + perPage);
+  }, [filteredMaterials, safeMaterialsPage]);
+
+  const clearFilters = () => {
+    setQuery("");
+    setStockFilter("all");
+    setMinStock("");
+    setMaxStock("");
+    setMaterialsPage(1);
+  };
+
+  const saveMaterial = async (form: MaterialFormState) => {
+    setSavingMaterial(true);
+    setMaterialsError("");
+    setMaterialSavedMessage("");
+
+    try {
+      const response = await axios.put("/api/materials", {
+        material_id: form.material_id,
+        name: form.name,
+        description: form.name,
+        barcode: form.barcode,
+        serial_number: form.barcode,
+        quantity: form.quantity,
+        cost: form.cost,
+        pvp: form.pvp,
+        tax_rate: form.tax_rate,
+        alert_threshold: form.alert_threshold,
+      });
+      const updatedMaterial = response.data.material as Material;
+
+      updateMaterialInCache(updatedMaterial);
+      setAllMaterials((current) =>
+        current.map((material) =>
+          material.material_id === updatedMaterial.material_id
+            ? { ...material, ...updatedMaterial }
+            : material
+        )
+      );
+      setMaterialSavedMessage("Material guardado en TallerGP.");
+
+      try {
+        await onCatalogChanged();
+      } catch (refreshError) {
+        console.error("Error refreshing catalog after material save:", refreshError);
+      }
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : "Error desconocido";
+
+      setMaterialsError(`No se pudo guardar en TallerGP: ${message}`);
+    } finally {
+      setSavingMaterial(false);
+      setEditingMaterial(null);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+        <div className="grid gap-3 lg:grid-cols-[1.3fr_0.7fr_0.5fr_0.5fr_auto]">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Buscar</span>
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 focus-within:border-red-500">
+              <Search size={18} className="text-zinc-500" />
+              <input
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setMaterialsPage(1);
+                }}
+                placeholder="Referencia, articulo o codigo"
+                className="min-w-0 flex-1 bg-transparent text-white placeholder-zinc-500 focus:outline-none"
+              />
+            </div>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Stock</span>
+            <select
+              value={stockFilter}
+              onChange={(event) => {
+                setStockFilter(event.target.value as MaterialStockFilter);
+                setMaterialsPage(1);
+              }}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            >
+              <option value="all">Todos</option>
+              <option value="available">Con stock</option>
+              <option value="low">Stock bajo</option>
+              <option value="out">Sin stock</option>
+            </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Min</span>
+            <input
+              type="number"
+              min="0"
+              value={minStock}
+              onChange={(event) => {
+                setMinStock(event.target.value);
+                setMaterialsPage(1);
+              }}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Max</span>
+            <input
+              type="number"
+              min="0"
+              value={maxStock}
+              onChange={(event) => {
+                setMaxStock(event.target.value);
+                setMaterialsPage(1);
+              }}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setMaterialsPage(1)}
+              className="inline-flex items-center gap-2 rounded-xl bg-red-500 px-4 py-3 font-semibold text-white transition-all hover:bg-red-400"
+            >
+              <Filter size={18} />
+              Filtrar
+            </button>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-semibold text-zinc-200 transition-all hover:bg-zinc-700"
+            >
+              Limpiar
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadMaterialsForAdmin(true)}
+              disabled={loadingMaterials}
+              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-semibold text-zinc-200 transition-all hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={loadingMaterials ? "animate-spin" : ""} />
+              Actualizar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {materialsError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          {materialsError}
+        </div>
+      )}
+      {materialSavedMessage && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-medium text-emerald-300">
+          {materialSavedMessage}
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-xl">
+        <div className="flex flex-col gap-2 border-b border-zinc-800 p-4 md:flex-row md:items-center md:justify-between">
+          <p className="text-sm font-semibold text-zinc-300">
+            {totalMaterials} materiales encontrados
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setMaterialsPage((current) => Math.max(1, current - 1))
+              }
+              disabled={safeMaterialsPage <= 1 || loadingMaterials}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-semibold text-zinc-200 disabled:opacity-50"
+            >
+              Anterior
+            </button>
+            <span className="text-sm text-zinc-400">
+              {safeMaterialsPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setMaterialsPage((current) => Math.min(totalPages, current + 1))
+              }
+              disabled={safeMaterialsPage >= totalPages || loadingMaterials}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-semibold text-zinc-200 disabled:opacity-50"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+
+        {loadingMaterials ? (
+          <Loader />
+        ) : materials.length === 0 ? (
+          <EmptyState text="No hay materiales con esos filtros." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead className="border-b border-zinc-800 bg-zinc-800/50 text-xs uppercase tracking-wider text-zinc-400">
+                <tr>
+                  <th className="p-4">Referencia</th>
+                  <th className="p-4">Articulo</th>
+                  <th className="p-4">Codigo</th>
+                  <th className="p-4 text-center">Stock</th>
+                  <th className="p-4 text-right">PVP</th>
+                  <th className="p-4 text-right">Accion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {materials.map((material) => {
+                  const barcode =
+                    material.barcode || material.ean || material.serial_number || "";
+                  const name = material.name || material.description || "";
+
+                  return (
+                    <tr key={material.material_id} className="hover:bg-zinc-800/30">
+                      <td className="p-4">
+                        <span className="font-mono font-bold text-cyan-400">
+                          {material.reference}
+                        </span>
+                      </td>
+                      <td className="max-w-md p-4">
+                        <p className="line-clamp-2 font-semibold text-white">{name}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          ID TallerGP: {material.material_id}
+                        </p>
+                      </td>
+                      <td className="p-4 font-mono text-zinc-300">
+                        {barcode || "-"}
+                      </td>
+                      <td className="p-4 text-center">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            Number(material.quantity ?? 0) <= 0
+                              ? "bg-red-500/10 text-red-300"
+                              : Number(material.quantity ?? 0) <=
+                                  Number(material.alert_threshold ?? 2)
+                                ? "bg-amber-500/10 text-amber-300"
+                                : "bg-emerald-500/10 text-emerald-300"
+                          }`}
+                        >
+                          {Number(material.quantity ?? 0)} u
+                        </span>
+                      </td>
+                      <td className="p-4 text-right font-semibold text-zinc-200">
+                        {formatMoney(material.pvp)}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onPrintMaterial(material)}
+                            disabled={!barcode}
+                            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 font-semibold text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Printer size={16} />
+                            Imprimir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingMaterial(material);
+                              setMaterialSavedMessage("");
+                              setMaterialsError("");
+                            }}
+                            className="inline-flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 font-semibold text-white transition-all hover:bg-zinc-700"
+                          >
+                            <Edit3 size={16} />
+                            Editar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {editingMaterial && (
+        <MaterialEditorModal
+          material={editingMaterial}
+          saving={savingMaterial}
+          onClose={() => setEditingMaterial(null)}
+          onSave={saveMaterial}
+          onPrint={onPrintMaterial}
+        />
+      )}
+    </div>
+  );
+}
+
+function MaterialEditorModal({
+  material,
+  saving,
+  onClose,
+  onSave,
+  onPrint,
+}: {
+  material: Material;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (form: MaterialFormState) => Promise<void>;
+  onPrint: (material: Material) => void;
+}) {
+  const [form, setForm] = useState<MaterialFormState>(() => ({
+    material_id: material.material_id,
+    reference: material.reference || "",
+    name: material.name || material.description || "",
+    barcode: material.barcode || material.ean || material.serial_number || "",
+    quantity: Number(material.quantity ?? 0),
+    unit: material.unit || "",
+    cost: material.cost === undefined ? "" : String(material.cost),
+    pvp: material.pvp === undefined ? "" : String(material.pvp),
+    tax_rate: String(material.tax_rate ?? material.iva ?? 21),
+    alert_threshold: String(material.alert_threshold ?? 2),
+  }));
+
+  const updateField = <Key extends keyof MaterialFormState>(
+    key: Key,
+    value: MaterialFormState[Key]
+  ) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+  const currentPvp = toOptionalNumber(form.pvp) ?? 0;
+  const currentTaxRate = toOptionalNumber(form.tax_rate) ?? 0;
+  const hasBarcode = form.barcode.trim().length > 0;
+
+  const generateBarcode = () => {
+    updateField("barcode", createInternalEan13());
+  };
+  const materialForPrint: Material = {
+    ...material,
+    serial_number: form.barcode,
+    barcode: form.barcode,
+    ean: form.barcode,
+    name: form.name,
+    description: form.name,
+    quantity: form.quantity,
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-4 backdrop-blur-sm md:items-center md:justify-center">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 p-4">
+          <div>
+            <p className="font-mono text-sm font-bold text-cyan-400">
+              {material.material_id}
+            </p>
+            <h2 className="text-xl font-bold text-white">Editar material</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Referencia</span>
+            <input
+              value={form.reference}
+              readOnly
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-zinc-400"
+            />
+          </div>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Codigo</span>
+            <div className="flex gap-2">
+              <input
+                value={form.barcode}
+                onChange={(event) => updateField("barcode", event.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 font-mono text-white focus:outline-none focus:border-red-500"
+              />
+              {!hasBarcode && (
+                <button
+                  type="button"
+                  onClick={generateBarcode}
+                  className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm font-semibold text-cyan-200 transition-all hover:bg-cyan-500/20"
+                >
+                  <Barcode size={18} />
+                  Generar
+                </button>
+              )}
+            </div>
+          </label>
+
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-sm font-medium text-zinc-300">Articulo</span>
+            <input
+              value={form.name}
+              onChange={(event) => updateField("name", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Stock directo</span>
+            <input
+              type="number"
+              min="0"
+              value={form.quantity}
+              onChange={(event) =>
+                updateField("quantity", Math.max(0, Number(event.target.value || 0)))
+              }
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Unidad</span>
+            <input
+              value={form.unit}
+              onChange={(event) => updateField("unit", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Coste</span>
+            <input
+              type="number"
+              step="0.01"
+              value={form.cost}
+              onChange={(event) => updateField("cost", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">PVP sin IVA</span>
+            <input
+              type="number"
+              step="0.01"
+              value={form.pvp}
+              onChange={(event) => updateField("pvp", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">IVA</span>
+            <input
+              type="number"
+              step="0.01"
+              value={form.tax_rate}
+              onChange={(event) => updateField("tax_rate", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-zinc-300">Alerta stock</span>
+            <input
+              type="number"
+              min="0"
+              value={form.alert_threshold}
+              onChange={(event) => updateField("alert_threshold", event.target.value)}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
+            />
+          </label>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 md:col-span-2">
+            <p className="text-sm text-zinc-400">PVP con IVA</p>
+            <p className="mt-1 text-2xl font-bold text-amber-300">
+              {formatMoney(currentPvp * (1 + currentTaxRate / 100))}
+            </p>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-900 p-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => onPrint(materialForPrint)}
+            disabled={saving || !hasBarcode}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 font-semibold text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Printer size={18} />
+            Imprimir
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-semibold text-white transition-all hover:bg-zinc-700 disabled:opacity-50"
+          >
+            Cerrar
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(form)}
+            disabled={saving || !form.reference.trim() || !form.name.trim()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white transition-all hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Guardar en TallerGP
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Loader() {
   return (
     <div className="flex justify-center py-20">
@@ -1409,18 +2161,29 @@ function LabelQueue({
   getDisplayName,
   printBarcodeLabel,
   markAsCompleted,
+  removeProductLocally,
+  removingProducts = new Set(),
 }: {
   rows: Adjustment[];
   getDisplayName: (item: Adjustment) => string;
   printBarcodeLabel: (item: Adjustment) => Promise<void>;
   markAsCompleted: (id: string) => Promise<void>;
+  removeProductLocally: (id: string) => Promise<void>;
+  removingProducts?: Set<string>;
 }) {
   return (
     <div className="grid gap-3">
-      {rows.map((item) => (
+      {rows.map((item) => {
+        const isRemoving = removingProducts?.has(item.id);
+        return (
         <div
           key={item.id}
-          className="flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:flex-row md:items-center md:justify-between"
+          className={`flex flex-col gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 md:flex-row md:items-center md:justify-between transition-all ${
+            isRemoving ? "opacity-50" : ""
+          }`}
+          style={{
+            animation: isRemoving ? "fadeOut 0.3s ease-out forwards" : "none",
+          }}
         >
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1447,26 +2210,42 @@ function LabelQueue({
           </div>
 
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <button
-              type="button"
-              onClick={() => printBarcodeLabel(item)}
-              disabled={!item.barcode}
-              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-cyan-500 disabled:opacity-50"
-            >
-              <Printer size={16} />
-              Imprimir
-            </button>
-            <button
-              type="button"
-              onClick={() => markAsCompleted(item.id)}
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-zinc-700"
-            >
-              <Check size={16} />
-              Marcar como impresa
-            </button>
+            {item.deleted_from_tallergp && (
+              <button
+                type="button"
+                onClick={() => removeProductLocally(item.id)}
+                disabled={isRemoving}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-900/40 border border-red-800 px-4 py-2 text-sm font-semibold text-red-300 transition-all hover:bg-red-900/60 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={16} />
+                Eliminar
+              </button>
+            )}
+            {!item.deleted_from_tallergp && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => printBarcodeLabel(item)}
+                  disabled={!item.barcode}
+                  className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-cyan-500 disabled:opacity-50"
+                >
+                  <Printer size={16} />
+                  Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markAsCompleted(item.id)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-zinc-700"
+                >
+                  <Check size={16} />
+                  Marcar como impresa
+                </button>
+              </>
+            )}
           </div>
         </div>
-      ))}
+      );
+    })}
     </div>
   );
 }

@@ -3,15 +3,7 @@ import { Material } from "@/types/material";
 
 const CACHE_KEY = "cazapiezas_materials_cache";
 const CACHE_TIMESTAMP_KEY = "cazapiezas_cache_timestamp";
-const CACHE_EXPIRY_HOURS = 24;
-
-const tallergpClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_TALLERGP_URL,
-  headers: {
-    Authorization: `Bearer ${process.env.NEXT_PUBLIC_TALLERGP_TOKEN}`,
-    "Content-Type": "application/json",
-  },
-});
+const CACHE_EXPIRY_HOURS = 2;
 
 /**
  * Comprueba si estamos en navegador
@@ -25,32 +17,13 @@ function isBrowser(): boolean {
  */
 async function fetchAllMaterialsFromAPI(): Promise<Material[]> {
   try {
-    let allMaterials: Material[] = [];
-    let page = 1;
-    let hasMorePages = true;
+    const response = await axios.get<Material[]>("/api/materials", {
+      params: {
+        all: "true",
+      },
+    });
 
-    while (hasMorePages) {
-      const response = await tallergpClient.get("/materials", {
-        params: {
-          page,
-          per_page: 100,
-        },
-      });
-
-      const materials = response.data.data || response.data || [];
-
-      allMaterials = [...allMaterials, ...materials];
-
-      if (response.data.pagination) {
-        hasMorePages = page < response.data.pagination.total_pages;
-      } else {
-        hasMorePages = materials.length === 100;
-      }
-
-      page++;
-    }
-
-    return allMaterials;
+    return response.data;
   } catch (error) {
     console.error("Error fetching materials from API:", error);
     throw error;
@@ -155,6 +128,8 @@ export async function loadAllMaterials(
 
   const materials = await fetchAllMaterialsFromAPI();
 
+  console.log(`📥 API devolvió ${materials.length} materiales`);
+
   saveMaterialsToCache(materials);
 
   console.log(
@@ -257,6 +232,25 @@ export function updateMaterialQuantityInCache(
 }
 
 /**
+ * Actualiza una ficha de material en el cache local.
+ */
+export function updateMaterialInCache(updatedMaterial: Material): void {
+  const materials = getMaterialsFromCache();
+
+  if (!materials) {
+    return;
+  }
+
+  const updatedMaterials = materials.map((material) =>
+    material.material_id === updatedMaterial.material_id
+      ? { ...material, ...updatedMaterial }
+      : material
+  );
+
+  saveMaterialsToCache(updatedMaterials);
+}
+
+/**
  * Detalle material cacheado
  */
 export function getMaterialDetailsFromCache(
@@ -297,7 +291,7 @@ export function clearCache(): void {
 export function getCacheInfo(): {
   itemCount: number;
   sizeKB: number;
-  lastUpdated: number | null;
+  lastUpdated: string | null;
   isExpired: boolean;
 } {
   if (!isBrowser()) {
@@ -326,7 +320,7 @@ export function getCacheInfo(): {
     return {
       itemCount: materials?.length || 0,
       sizeKB: Math.round(sizeKB * 100) / 100,
-      lastUpdated: timestamp ? Number(timestamp) : null,
+      lastUpdated: timestamp,
       isExpired: isCacheExpired(),
     };
   } catch (error) {
@@ -348,9 +342,11 @@ export async function getMaterialDetails(
   materialId: string
 ): Promise<Material> {
   try {
-    const response = await tallergpClient.get(
-      `/materials/${materialId}`
-    );
+    const response = await axios.get<Material>("/api/materials", {
+      params: {
+        material_id: materialId,
+      },
+    });
 
     return response.data;
   } catch (error) {

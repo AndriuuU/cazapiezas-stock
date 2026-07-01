@@ -34,6 +34,10 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
         setError("");
 
         const materials = await loadAllMaterials(forceRefresh);
+        
+        // Pequeño delay para asegurar que localStorage se ha actualizado
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const info = getCacheInfo();
 
         setCacheInfo(info);
@@ -72,7 +76,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
       if (info.itemCount > 0 && info.isExpired) {
         void loadCache(false);
       }
-    }, 60 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
     return () => window.clearInterval(intervalId);
   }, [loadCache]);
