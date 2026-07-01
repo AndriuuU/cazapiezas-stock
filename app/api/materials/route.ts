@@ -4,11 +4,9 @@ import { createInternalEan13 } from "@/lib/barcodes";
 import { getSupabaseRestConfig } from "@/lib/supabase";
 
 const tallergpClient = axios.create({
-  baseURL: process.env.TALLERGP_URL || process.env.NEXT_PUBLIC_TALLERGP_URL,
+  baseURL: process.env.TALLERGP_URL,
   headers: {
-    Authorization: `Bearer ${
-      process.env.TALLERGP_TOKEN || process.env.NEXT_PUBLIC_TALLERGP_TOKEN
-    }`,
+    Authorization: `Bearer ${process.env.TALLERGP_TOKEN}`,
     "Content-Type": "application/json",
   },
 });
@@ -17,6 +15,7 @@ const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const PRODUCT_BARCODE_SUFFIX_PREFIX = " [CODIGO: ";
 const PRODUCT_SNAPSHOT_SUFFIX_PREFIX = " [FICHA: ";
 const PRODUCT_KEYS_CACHE_MS = 5 * 60 * 1000;
+const MATERIALS_PER_PAGE = 100;
 let productKeysCache:
   | {
       fetchedAt: number;
@@ -49,6 +48,90 @@ function getErrorMessage(error: unknown) {
   }
 
   return error instanceof Error ? error.message : "Error desconocido";
+}
+
+function normalizeMaterialListResponse(data: unknown) {
+  const response = data as {
+    data?: unknown[];
+    pagination?: { total_pages?: number; page?: number; total?: number };
+  };
+
+  return {
+    materials: Array.isArray(response.data)
+      ? response.data
+      : Array.isArray(data)
+        ? data
+        : [],
+    pagination: response.pagination,
+  };
+}
+
+async function fetchAllMaterials() {
+  const allMaterials: Record<string, unknown>[] = [];
+  let page = 1;
+  let hasMorePages = true;
+
+  while (hasMorePages) {
+    const response = await tallergpClient.get("/materials", {
+      params: {
+        page,
+        per_page: MATERIALS_PER_PAGE,
+      },
+    });
+    const { materials, pagination } = normalizeMaterialListResponse(response.data);
+
+    allMaterials.push(...(materials as Record<string, unknown>[]));
+
+    if (pagination?.total_pages) {
+      hasMorePages = page < pagination.total_pages;
+    } else {
+      hasMorePages = materials.length === MATERIALS_PER_PAGE;
+    }
+
+    page++;
+  }
+
+  return allMaterials;
+}
+
+function getMaterialSearchText(material: Record<string, unknown>) {
+  return [
+    material.reference,
+    material.name,
+    material.description,
+    material.barcode,
+    material.ean,
+    material.serial_number,
+    material.material_id,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+}
+
+function toOptionalNumber(value: unknown) {
+  if (value === "" || value === null || value === undefined) {
+    return undefined;
+  }
+
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function compactPayload(payload: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+}
+
+async function updateMaterial(materialId: string, payload: Record<string, unknown>) {
+  if (Object.keys(payload).length === 0) {
+    return undefined;
+  }
+
+  const response = await tallergpClient.put(`/materials/${materialId}`, payload);
+
+  return response.data;
 }
 
 async function registerProductCreatedEvent(material: {
@@ -204,6 +287,112 @@ function generateUniqueInternalBarcode(existingBarcodes: Set<string>) {
   }
 
   throw new Error("No se pudo generar un codigo de barras unico");
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const materialId = searchParams.get("material_id")?.trim();
+    const all = searchParams.get("all") === "true";
+
+    if (materialId) {
+      const response = await tallergpClient.get(`/materials/${materialId}`);
+
+      return NextResponse.json(response.data);
+    }
+
+    if (all) {
+      return NextResponse.json(await fetchAllMaterials());
+    }
+
+    const query = searchParams.get("q")?.trim().toLowerCase() || "";
+    const stock = searchParams.get("stock") || "all";
+    const page = Math.max(1, Number(searchParams.get("page") || 1));
+    const perPage = Math.min(100, Math.max(10, Number(searchParams.get("per_page") || 30)));
+    const minStock = toOptionalNumber(searchParams.get("min_stock"));
+    const maxStock = toOptionalNumber(searchParams.get("max_stock"));
+
+    const allMaterials = await fetchAllMaterials();
+    const filteredMaterials = allMaterials.filter((material) => {
+      const quantity = Number(material.quantity ?? 0);
+      const threshold = Number(material.alert_threshold ?? 2);
+      const matchesQuery = query
+        ? getMaterialSearchText(material).includes(query)
+        : true;
+      const matchesStock =
+        stock === "out"
+          ? quantity <= 0
+          : stock === "low"
+            ? quantity > 0 && quantity <= threshold
+            : stock === "available"
+              ? quantity > 0
+              : true;
+      const matchesMin = minStock === undefined || quantity >= minStock;
+      const matchesMax = maxStock === undefined || quantity <= maxStock;
+
+      return matchesQuery && matchesStock && matchesMin && matchesMax;
+    });
+    const start = (page - 1) * perPage;
+
+    return NextResponse.json({
+      data: filteredMaterials.slice(start, start + perPage),
+      total: filteredMaterials.length,
+      page,
+      per_page: perPage,
+      total_pages: Math.max(1, Math.ceil(filteredMaterials.length / perPage)),
+    });
+  } catch (error: unknown) {
+    const status = axios.isAxiosError(error) ? error.response?.status || 502 : 500;
+
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const materialId = String(body.material_id || "").trim();
+    const nextQuantity = toOptionalNumber(body.quantity);
+    const payload = compactPayload({
+      description: body.description ?? body.name,
+      serial_number: body.serial_number || body.barcode || body.ean || undefined,
+      quantity: nextQuantity,
+      cost: toOptionalNumber(body.cost),
+      pvp: toOptionalNumber(body.pvp),
+      tax_rate: toOptionalNumber(body.tax_rate ?? body.iva),
+      alert_threshold: toOptionalNumber(body.alert_threshold),
+      discount1: toOptionalNumber(body.discount1),
+      discount2: toOptionalNumber(body.discount2),
+      margin: toOptionalNumber(body.margin),
+    });
+
+    if (!materialId) {
+      return NextResponse.json(
+        { error: "Falta el ID del material" },
+        { status: 400 }
+      );
+    }
+
+    if (nextQuantity !== undefined && nextQuantity < 0) {
+      return NextResponse.json(
+        { error: "El stock no puede ser negativo" },
+        { status: 400 }
+      );
+    }
+
+    const updateResult = await updateMaterial(materialId, payload);
+    const detailsResponse = await tallergpClient.get(`/materials/${materialId}`);
+    productKeysCache = undefined;
+
+    return NextResponse.json({
+      material: detailsResponse.data,
+      tallergp_update: updateResult,
+    });
+  } catch (error: unknown) {
+    const status = axios.isAxiosError(error) ? error.response?.status || 502 : 500;
+
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
 }
 
 export async function POST(request: Request) {
