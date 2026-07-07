@@ -112,6 +112,21 @@ async function getLatestAdjustments() {
   );
 }
 
+async function getMaterialAdjustments(materialId: string, reference: string) {
+  const filters = [
+    materialId ? `material_id.eq.${materialId}` : "",
+    reference ? `reference.eq.${reference}` : "",
+  ].filter(Boolean);
+  const filterQuery =
+    filters.length > 0
+      ? `&or=${encodeURIComponent(`(${filters.join(",")})`)}`
+      : "";
+
+  return requestSupabase<StockAdjustment[]>(
+    `stock_adjustments?select=*&reference=neq.${EMPLOYEES_REFERENCE}${filterQuery}&order=created_at.desc&limit=500`
+  );
+}
+
 async function fetchMaterialsByLookupKey() {
   if (
     materialsLookupCache &&
@@ -283,36 +298,46 @@ export async function POST(request: Request) {
   }
 }
 
-// Obtiene los ultimos movimientos guardados.
-export async function GET() {
+async function enrichAdjustments(data: StockAdjustment[]) {
+  let materialsByKey = new Map<string, { barcode?: string; name?: string }>();
+  let materialsLookupAvailable = true;
+
   try {
-    const data = await getLatestAdjustments();
-    let materialsByKey = new Map<string, { barcode?: string; name?: string }>();
-    let materialsLookupAvailable = true;
+    materialsByKey = await fetchMaterialsByLookupKey();
+  } catch (materialsError) {
+    materialsLookupAvailable = false;
+    console.error("Error enriching adjustments with TallerGP materials:", materialsError);
+  }
 
-    try {
-      materialsByKey = await fetchMaterialsByLookupKey();
-    } catch (materialsError) {
-      materialsLookupAvailable = false;
-      console.error("Error enriching adjustments with TallerGP materials:", materialsError);
-    }
+  return data.map((item) => {
+    const material =
+      materialsByKey.get(String(item.material_id || "")) ||
+      materialsByKey.get(String(item.reference || ""));
+    const productSnapshot = parseProductSnapshot(item.name || "");
+    const snapshotBarcode = getSnapshotBarcode(item.name || "");
+    const created = isProductCreated(item);
 
-    const enrichedData = data.map((item) => {
-      const material =
-        materialsByKey.get(String(item.material_id || "")) ||
-        materialsByKey.get(String(item.reference || ""));
-      const productSnapshot = parseProductSnapshot(item.name || "");
-      const snapshotBarcode = getSnapshotBarcode(item.name || "");
-      const created = isProductCreated(item);
+    return {
+      ...item,
+      barcode: material?.barcode || snapshotBarcode || undefined,
+      material_name: material?.name || productSnapshot?.name,
+      deleted_from_tallergp: materialsLookupAvailable && created && !material,
+      product_snapshot: productSnapshot,
+    };
+  });
+}
 
-      return {
-        ...item,
-        barcode: material?.barcode || snapshotBarcode || undefined,
-        material_name: material?.name || productSnapshot?.name,
-        deleted_from_tallergp: materialsLookupAvailable && created && !material,
-        product_snapshot: productSnapshot,
-      };
-    });
+// Obtiene los ultimos movimientos guardados o los de un material concreto.
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const materialId = searchParams.get("material_id")?.trim() || "";
+    const reference = searchParams.get("reference")?.trim() || "";
+    const data =
+      materialId || reference
+        ? await getMaterialAdjustments(materialId, reference)
+        : await getLatestAdjustments();
+    const enrichedData = await enrichAdjustments(data);
 
     return NextResponse.json(enrichedData);
   } catch (error: unknown) {
