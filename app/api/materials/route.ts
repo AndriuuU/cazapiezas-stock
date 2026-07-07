@@ -134,6 +134,47 @@ async function updateMaterial(materialId: string, payload: Record<string, unknow
   return response.data;
 }
 
+async function registerAdminStockAdjustment(material: {
+  material_id: string;
+  reference: string;
+  name: string;
+  quantity_before: number;
+  quantity_after: number;
+}) {
+  const { url, anonKey } = getSupabaseRestConfig();
+  const difference = material.quantity_after - material.quantity_before;
+
+  if (difference === 0) {
+    return undefined;
+  }
+
+  const response = await fetch(`${url}/rest/v1/stock_adjustments?select=*`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      material_id: material.material_id,
+      reference: material.reference,
+      name: `[ADMIN] ${material.name}`,
+      quantity_before: material.quantity_before,
+      quantity_after: material.quantity_after,
+      difference,
+      status: "completed",
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => null);
+    throw new Error(errorBody?.message || `Supabase error ${response.status}`);
+  }
+
+  return response.json();
+}
+
 async function registerProductCreatedEvent(material: {
   material_id?: string;
   reference: string;
@@ -289,11 +330,45 @@ function generateUniqueInternalBarcode(existingBarcodes: Set<string>) {
   throw new Error("No se pudo generar un codigo de barras unico");
 }
 
+async function fetchMaterialMovements(materialId: string) {
+  const allMovements: Record<string, unknown>[] = [];
+  let page = 1;
+  let hasMorePages = true;
+
+  while (hasMorePages) {
+    const response = await tallergpClient.get(`/materials/${materialId}/movements`, {
+      params: {
+        page,
+        per_page: 100,
+      },
+    });
+    const movements = response.data.data || response.data || [];
+    const pagination = response.data.pagination;
+
+    allMovements.push(...movements);
+
+    if (pagination?.total_pages) {
+      hasMorePages = page < pagination.total_pages;
+    } else {
+      hasMorePages = movements.length === 100;
+    }
+
+    page++;
+  }
+
+  return allMovements;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const materialId = searchParams.get("material_id")?.trim();
+    const movements = searchParams.get("movements") === "true";
     const all = searchParams.get("all") === "true";
+
+    if (materialId && movements) {
+      return NextResponse.json(await fetchMaterialMovements(materialId));
+    }
 
     if (materialId) {
       const response = await tallergpClient.get(`/materials/${materialId}`);
@@ -380,13 +455,71 @@ export async function PUT(request: Request) {
       );
     }
 
+    const previousDetailsResponse =
+      nextQuantity === undefined
+        ? undefined
+        : await tallergpClient.get(`/materials/${materialId}`);
+    const previousMaterial = previousDetailsResponse?.data || {};
+    const previousQuantity = Number(previousMaterial.quantity ?? 0);
     const updateResult = await updateMaterial(materialId, payload);
-    const detailsResponse = await tallergpClient.get(`/materials/${materialId}`);
+    let detailsResponse = await tallergpClient.get(`/materials/${materialId}`);
+    let updatedMaterial = detailsResponse.data || {};
+    let stockFallbackUsed = false;
+
+    if (
+      nextQuantity !== undefined &&
+      Number(updatedMaterial.quantity ?? 0) !== nextQuantity
+    ) {
+      await tallergpClient.post(`/materials/${materialId}/movements`, {
+        quantity: nextQuantity,
+      });
+      stockFallbackUsed = true;
+      detailsResponse = await tallergpClient.get(`/materials/${materialId}`);
+      updatedMaterial = detailsResponse.data || {};
+    }
+
+    if (
+      nextQuantity !== undefined &&
+      Number(updatedMaterial.quantity ?? 0) !== nextQuantity
+    ) {
+      throw new Error(
+        `TallerGP no devolvio el stock actualizado. Pedido: ${nextQuantity}. Actual: ${updatedMaterial.quantity ?? "-"}`
+      );
+    }
+    let historyWarning: string | undefined;
+
+    if (
+      nextQuantity !== undefined &&
+      Number.isFinite(previousQuantity) &&
+      previousQuantity !== nextQuantity
+    ) {
+      try {
+        await registerAdminStockAdjustment({
+          material_id: materialId,
+          reference: String(updatedMaterial.reference || previousMaterial.reference || ""),
+          name: String(
+            updatedMaterial.name ||
+              updatedMaterial.description ||
+              previousMaterial.name ||
+              previousMaterial.description ||
+              body.description ||
+              body.name ||
+              ""
+          ),
+          quantity_before: previousQuantity,
+          quantity_after: nextQuantity,
+        });
+      } catch (historyError) {
+        historyWarning = getErrorMessage(historyError);
+      }
+    }
     productKeysCache = undefined;
 
     return NextResponse.json({
-      material: detailsResponse.data,
+      material: updatedMaterial,
       tallergp_update: updateResult,
+      stock_fallback_used: stockFallbackUsed,
+      history_warning: historyWarning,
     });
   } catch (error: unknown) {
     const status = axios.isAxiosError(error) ? error.response?.status || 502 : 500;

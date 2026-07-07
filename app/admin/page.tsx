@@ -87,12 +87,51 @@ interface MaterialFormState {
   reference: string;
   name: string;
   barcode: string;
-  quantity: number;
+  quantity: string;
   unit: string;
   cost: string;
   pvp: string;
   tax_rate: string;
   alert_threshold: string;
+}
+
+interface TallerGpMaterialMovement {
+  id: string;
+  movement_date?: string;
+  quantity?: number;
+  entry_id?: string | null;
+  sales_delivery_note_id?: string | null;
+  invoice_id?: string | null;
+  ticket_id?: string | null;
+  purchase_delivery_note_id?: string | null;
+  description?: string | null;
+}
+
+function getMaterialBarcode(material: Material) {
+  return String(material.barcode || material.ean || material.serial_number || "").trim();
+}
+
+function getMaterialName(material: Material) {
+  return material.name || material.description || material.reference || "";
+}
+
+function buildMaterialForm(
+  material: Material,
+  overrides: Partial<MaterialFormState> = {}
+): MaterialFormState {
+  return {
+    material_id: material.material_id,
+    reference: material.reference || "",
+    name: getMaterialName(material),
+    barcode: getMaterialBarcode(material),
+    quantity: String(Number(material.quantity ?? 0)),
+    unit: material.unit || "",
+    cost: material.cost === undefined ? "" : String(material.cost),
+    pvp: material.pvp === undefined ? "" : String(material.pvp),
+    tax_rate: String(material.tax_rate ?? material.iva ?? 21),
+    alert_threshold: String(material.alert_threshold ?? 2),
+    ...overrides,
+  };
 }
 
 interface LabelSettings {
@@ -1536,6 +1575,7 @@ function MaterialsAdminPanel({
   const [materialsError, setMaterialsError] = useState("");
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [savingMaterial, setSavingMaterial] = useState(false);
+  const [generatingBarcodeId, setGeneratingBarcodeId] = useState<string | null>(null);
   const [materialSavedMessage, setMaterialSavedMessage] = useState("");
   const perPage = 30;
 
@@ -1636,7 +1676,10 @@ function MaterialsAdminPanel({
     setMaterialsPage(1);
   };
 
-  const saveMaterial = async (form: MaterialFormState) => {
+  const saveMaterial = async (
+    form: MaterialFormState,
+    successMessage = "Material guardado en TallerGP."
+  ) => {
     setSavingMaterial(true);
     setMaterialsError("");
     setMaterialSavedMessage("");
@@ -1648,13 +1691,14 @@ function MaterialsAdminPanel({
         description: form.name,
         barcode: form.barcode,
         serial_number: form.barcode,
-        quantity: form.quantity,
+        quantity: Number(form.quantity || 0),
         cost: form.cost,
         pvp: form.pvp,
         tax_rate: form.tax_rate,
         alert_threshold: form.alert_threshold,
       });
       const updatedMaterial = response.data.material as Material;
+      const stockFallbackUsed = Boolean(response.data.stock_fallback_used);
 
       updateMaterialInCache(updatedMaterial);
       setAllMaterials((current) =>
@@ -1664,7 +1708,11 @@ function MaterialsAdminPanel({
             : material
         )
       );
-      setMaterialSavedMessage("Material guardado en TallerGP.");
+      setMaterialSavedMessage(
+        stockFallbackUsed
+          ? `${successMessage} Stock actualizado con movimiento de TallerGP.`
+          : successMessage
+      );
 
       try {
         await onCatalogChanged();
@@ -1680,6 +1728,21 @@ function MaterialsAdminPanel({
     } finally {
       setSavingMaterial(false);
       setEditingMaterial(null);
+    }
+  };
+
+  const generateBarcodeForMaterial = async (material: Material) => {
+    const barcode = createInternalEan13();
+
+    setGeneratingBarcodeId(material.material_id);
+
+    try {
+      await saveMaterial(
+        buildMaterialForm(material, { barcode }),
+        `Codigo ${barcode} generado y guardado en TallerGP.`
+      );
+    } finally {
+      setGeneratingBarcodeId(null);
     }
   };
 
@@ -1839,9 +1902,10 @@ function MaterialsAdminPanel({
               </thead>
               <tbody className="divide-y divide-zinc-800">
                 {materials.map((material) => {
-                  const barcode =
-                    material.barcode || material.ean || material.serial_number || "";
-                  const name = material.name || material.description || "";
+                  const barcode = getMaterialBarcode(material);
+                  const name = getMaterialName(material);
+                  const isGeneratingBarcode =
+                    generatingBarcodeId === material.material_id;
 
                   return (
                     <tr key={material.material_id} className="hover:bg-zinc-800/30">
@@ -1878,15 +1942,30 @@ function MaterialsAdminPanel({
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onPrintMaterial(material)}
-                            disabled={!barcode}
-                            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 font-semibold text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Printer size={16} />
-                            Imprimir
-                          </button>
+                          {barcode ? (
+                            <button
+                              type="button"
+                              onClick={() => onPrintMaterial(material)}
+                              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 font-semibold text-white transition-all hover:bg-cyan-500"
+                            >
+                              <Printer size={16} />
+                              Imprimir
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => generateBarcodeForMaterial(material)}
+                              disabled={isGeneratingBarcode || savingMaterial}
+                              className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 font-semibold text-cyan-200 transition-all hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isGeneratingBarcode ? (
+                                <Loader2 size={16} className="animate-spin" />
+                              ) : (
+                                <Barcode size={16} />
+                              )}
+                              Generar codigo
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -1916,7 +1995,6 @@ function MaterialsAdminPanel({
           saving={savingMaterial}
           onClose={() => setEditingMaterial(null)}
           onSave={saveMaterial}
-          onPrint={onPrintMaterial}
         />
       )}
     </div>
@@ -1928,26 +2006,16 @@ function MaterialEditorModal({
   saving,
   onClose,
   onSave,
-  onPrint,
 }: {
   material: Material;
   saving: boolean;
   onClose: () => void;
   onSave: (form: MaterialFormState) => Promise<void>;
-  onPrint: (material: Material) => void;
 }) {
-  const [form, setForm] = useState<MaterialFormState>(() => ({
-    material_id: material.material_id,
-    reference: material.reference || "",
-    name: material.name || material.description || "",
-    barcode: material.barcode || material.ean || material.serial_number || "",
-    quantity: Number(material.quantity ?? 0),
-    unit: material.unit || "",
-    cost: material.cost === undefined ? "" : String(material.cost),
-    pvp: material.pvp === undefined ? "" : String(material.pvp),
-    tax_rate: String(material.tax_rate ?? material.iva ?? 21),
-    alert_threshold: String(material.alert_threshold ?? 2),
-  }));
+  const [form, setForm] = useState<MaterialFormState>(() => buildMaterialForm(material));
+  const [movementRows, setMovementRows] = useState<Adjustment[]>([]);
+  const [loadingMovements, setLoadingMovements] = useState(false);
+  const [movementsError, setMovementsError] = useState("");
 
   const updateField = <Key extends keyof MaterialFormState>(
     key: Key,
@@ -1962,15 +2030,44 @@ function MaterialEditorModal({
   const generateBarcode = () => {
     updateField("barcode", createInternalEan13());
   };
-  const materialForPrint: Material = {
-    ...material,
-    serial_number: form.barcode,
-    barcode: form.barcode,
-    ean: form.barcode,
-    name: form.name,
-    description: form.name,
-    quantity: form.quantity,
-  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.resolve().then(async () => {
+      setLoadingMovements(true);
+      setMovementsError("");
+
+      try {
+        const response = await axios.get<Adjustment[]>("/api/adjustments", {
+          params: {
+            material_id: material.material_id,
+            reference: material.reference,
+          },
+        });
+
+        if (isMounted) {
+          setMovementRows(response.data);
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Error desconocido";
+
+        if (isMounted) {
+          setMovementsError(`No se pudieron cargar los movimientos: ${message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingMovements(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [material.material_id, material.reference]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-4 backdrop-blur-sm md:items-center md:justify-center">
@@ -2038,9 +2135,13 @@ function MaterialEditorModal({
               type="number"
               min="0"
               value={form.quantity}
-              onChange={(event) =>
-                updateField("quantity", Math.max(0, Number(event.target.value || 0)))
-              }
+              onChange={(event) => {
+                const value = event.target.value;
+
+                if (value === "" || /^\d+$/.test(value)) {
+                  updateField("quantity", value);
+                }
+              }}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
             />
           </label>
@@ -2104,18 +2205,86 @@ function MaterialEditorModal({
               {formatMoney(currentPvp * (1 + currentTaxRate / 100))}
             </p>
           </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 md:col-span-2">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-white">Movimientos de este material</h3>
+                <p className="text-sm text-zinc-500">
+                  Historial guardado en Cazapiezas STOCK.
+                </p>
+              </div>
+              {loadingMovements && (
+                <Loader2 size={18} className="animate-spin text-cyan-400" />
+              )}
+            </div>
+
+            {movementsError ? (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                {movementsError}
+              </div>
+            ) : loadingMovements ? (
+              <p className="text-sm text-zinc-500">Cargando movimientos...</p>
+            ) : movementRows.length === 0 ? (
+              <p className="text-sm text-zinc-500">No hay movimientos guardados.</p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-zinc-950 text-xs uppercase tracking-wider text-zinc-500">
+                    <tr>
+                      <th className="py-2 pr-3">Fecha</th>
+                      <th className="py-2 pr-3">Empleado</th>
+                      <th className="py-2 pr-3 text-center">Antes</th>
+                      <th className="py-2 pr-3 text-center">Despues</th>
+                      <th className="py-2 text-right">Mov.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {movementRows.map((movement) => {
+                      const employee =
+                        movement.name?.startsWith("[ADMIN]")
+                          ? "Admin"
+                          : movement.name?.match(EMPLOYEE_PREFIX_PATTERN)?.[1] || "-";
+                      const isCreation =
+                        movement.status === "created" ||
+                        movement.name?.startsWith(PRODUCT_CREATED_PREFIX);
+
+                      return (
+                        <tr key={movement.id || `${movement.created_at}-${movement.difference}`}>
+                          <td className="py-2 pr-3 text-zinc-400">
+                            {formatDate(movement.created_at)}
+                          </td>
+                          <td className="py-2 pr-3 text-zinc-300">
+                            {isCreation ? "Alta" : employee}
+                          </td>
+                          <td className="py-2 pr-3 text-center text-zinc-500">
+                            {isCreation ? "-" : movement.quantity_before}
+                          </td>
+                          <td className="py-2 pr-3 text-center font-semibold text-white">
+                            {movement.quantity_after}
+                          </td>
+                          <td
+                            className={`py-2 text-right font-bold ${
+                              movement.difference >= 0
+                                ? "text-emerald-300"
+                                : "text-red-300"
+                            }`}
+                          >
+                            {movement.difference > 0
+                              ? `+${movement.difference}`
+                              : movement.difference}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="sticky bottom-0 flex flex-col gap-2 border-t border-zinc-800 bg-zinc-900 p-4 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={() => onPrint(materialForPrint)}
-            disabled={saving || !hasBarcode}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 py-3 font-semibold text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Printer size={18} />
-            Imprimir
-          </button>
           <button
             type="button"
             onClick={onClose}
@@ -2127,7 +2296,12 @@ function MaterialEditorModal({
           <button
             type="button"
             onClick={() => onSave(form)}
-            disabled={saving || !form.reference.trim() || !form.name.trim()}
+            disabled={
+              saving ||
+              !form.reference.trim() ||
+              !form.name.trim() ||
+              form.quantity === ""
+            }
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white transition-all hover:bg-emerald-500 disabled:opacity-50"
           >
             {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
@@ -2340,6 +2514,11 @@ function ProductQuickView({
   onPrint: (item: Adjustment) => Promise<void>;
 }) {
   const snapshot = item.product_snapshot;
+  const [tallergpMovements, setTallergpMovements] = useState<
+    TallerGpMaterialMovement[]
+  >([]);
+  const [loadingTallergpMovements, setLoadingTallergpMovements] = useState(false);
+  const [tallergpMovementsError, setTallergpMovementsError] = useState("");
   const currentBarcode =
     item.barcode || material?.barcode || material?.ean || material?.serial_number || "";
   const currentTaxRate = toOptionalNumber(material?.tax_rate ?? material?.iva);
@@ -2348,6 +2527,51 @@ function ProductQuickView({
     currentPvp !== undefined && currentTaxRate !== undefined
       ? currentPvp * (1 + currentTaxRate / 100)
       : undefined;
+  const materialId = material?.material_id || item.material_id;
+
+  useEffect(() => {
+    if (!materialId) {
+      return;
+    }
+
+    let isMounted = true;
+
+    void Promise.resolve().then(async () => {
+      setLoadingTallergpMovements(true);
+      setTallergpMovementsError("");
+
+      try {
+        const response = await axios.get<TallerGpMaterialMovement[]>("/api/materials", {
+          params: {
+            material_id: materialId,
+            movements: "true",
+          },
+        });
+
+        if (isMounted) {
+          setTallergpMovements(response.data);
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Error desconocido";
+
+        if (isMounted) {
+          setTallergpMovementsError(
+            `No se pudieron cargar los movimientos de TallerGP: ${message}`
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingTallergpMovements(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [materialId]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-4 backdrop-blur-sm md:items-center md:justify-center">
@@ -2455,14 +2679,66 @@ function ProductQuickView({
           </div>
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-            <h3 className="mb-3 font-bold text-white">Movimiento registrado</h3>
-            <div className="grid gap-3 md:grid-cols-2">
-              <InfoLine label="Fecha" value={formatDate(item.created_at)} />
-              <InfoLine label="Estado" value={item.status || "-"} />
-              <InfoLine label="Antes" value={item.quantity_before} />
-              <InfoLine label="Despues" value={item.quantity_after} />
-              <InfoLine label="Diferencia" value={item.difference} />
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-white">Movimientos en TallerGP</h3>
+                <p className="text-sm text-zinc-500">
+                  Historial completo devuelto por TallerGP.
+                </p>
+              </div>
+              {loadingTallergpMovements && (
+                <Loader2 size={18} className="animate-spin text-cyan-400" />
+              )}
             </div>
+
+            {tallergpMovementsError ? (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                {tallergpMovementsError}
+              </div>
+            ) : loadingTallergpMovements ? (
+              <p className="text-sm text-zinc-500">Cargando movimientos...</p>
+            ) : tallergpMovements.length === 0 ? (
+              <p className="text-sm text-zinc-500">TallerGP no devolvio movimientos.</p>
+            ) : (
+              <div className="max-h-80 overflow-y-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-zinc-950 text-xs uppercase tracking-wider text-zinc-500">
+                    <tr>
+                      <th className="py-2 pr-3">Fecha</th>
+                      <th className="py-2 pr-3 text-right">Cantidad</th>
+                      <th className="py-2 pr-3">Origen</th>
+                      <th className="py-2">Descripcion</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {tallergpMovements.map((movement) => (
+                      <tr key={movement.id}>
+                        <td className="py-2 pr-3 text-zinc-400">
+                          {formatDate(movement.movement_date)}
+                        </td>
+                        <td
+                          className={`py-2 pr-3 text-right font-bold ${
+                            Number(movement.quantity ?? 0) >= 0
+                              ? "text-emerald-300"
+                              : "text-red-300"
+                          }`}
+                        >
+                          {Number(movement.quantity ?? 0) > 0
+                            ? `+${movement.quantity}`
+                            : movement.quantity ?? "-"}
+                        </td>
+                        <td className="py-2 pr-3 text-zinc-300">
+                          {getMovementSource(movement)}
+                        </td>
+                        <td className="py-2 text-zinc-400">
+                          {movement.description || "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -2502,6 +2778,16 @@ function formatDate(value?: string) {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function getMovementSource(movement: TallerGpMaterialMovement) {
+  if (movement.entry_id) return "Entrada";
+  if (movement.sales_delivery_note_id) return "Albaran venta";
+  if (movement.invoice_id) return "Factura";
+  if (movement.ticket_id) return "Ticket";
+  if (movement.purchase_delivery_note_id) return "Albaran compra";
+
+  return "Ajuste";
 }
 
 function toOptionalNumber(value: unknown) {
