@@ -3,7 +3,7 @@ import { Material } from "@/types/material";
 
 const CACHE_KEY = "cazapiezas_materials_cache";
 const CACHE_TIMESTAMP_KEY = "cazapiezas_cache_timestamp";
-const CACHE_EXPIRY_HOURS = 2;
+export const CACHE_EXPIRY_HOURS = 2;
 
 /**
  * Comprueba si estamos en navegador
@@ -292,6 +292,7 @@ export function getCacheInfo(): {
   itemCount: number;
   sizeKB: number;
   lastUpdated: string | null;
+  lastUpdatedAt: number | null;
   isExpired: boolean;
 } {
   if (!isBrowser()) {
@@ -299,6 +300,7 @@ export function getCacheInfo(): {
       itemCount: 0,
       sizeKB: 0,
       lastUpdated: null,
+      lastUpdatedAt: null,
       isExpired: true,
     };
   }
@@ -308,6 +310,7 @@ export function getCacheInfo(): {
     const timestamp = localStorage.getItem(
       CACHE_TIMESTAMP_KEY
     );
+    const lastUpdatedAt = timestamp ? Number(timestamp) : null;
 
     let sizeKB = 0;
 
@@ -321,6 +324,10 @@ export function getCacheInfo(): {
       itemCount: materials?.length || 0,
       sizeKB: Math.round(sizeKB * 100) / 100,
       lastUpdated: timestamp,
+      lastUpdatedAt:
+        lastUpdatedAt !== null && Number.isFinite(lastUpdatedAt)
+          ? lastUpdatedAt
+          : null,
       isExpired: isCacheExpired(),
     };
   } catch (error) {
@@ -330,6 +337,7 @@ export function getCacheInfo(): {
       itemCount: 0,
       sizeKB: 0,
       lastUpdated: null,
+      lastUpdatedAt: null,
       isExpired: true,
     };
   }
