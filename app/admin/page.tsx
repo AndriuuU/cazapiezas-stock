@@ -1573,6 +1573,7 @@ function MaterialsAdminPanel({
   const [materialsPage, setMaterialsPage] = useState(1);
   const [loadingMaterials, setLoadingMaterials] = useState(false);
   const [materialsError, setMaterialsError] = useState("");
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [savingMaterial, setSavingMaterial] = useState(false);
   const [generatingBarcodeId, setGeneratingBarcodeId] = useState<string | null>(null);
@@ -1908,17 +1909,25 @@ function MaterialsAdminPanel({
                     generatingBarcodeId === material.material_id;
 
                   return (
-                    <tr key={material.material_id} className="hover:bg-zinc-800/30">
+                    <tr
+                      key={material.material_id}
+                      onClick={() => setSelectedMaterial(material)}
+                      className="cursor-pointer hover:bg-zinc-800/30"
+                    >
                       <td className="p-4">
-                        <span className="font-mono font-bold text-cyan-400">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedMaterial(material);
+                          }}
+                          className="font-mono font-bold text-cyan-400 underline-offset-4 transition-colors hover:text-cyan-300 hover:underline"
+                        >
                           {material.reference}
-                        </span>
+                        </button>
                       </td>
                       <td className="max-w-md p-4">
                         <p className="line-clamp-2 font-semibold text-white">{name}</p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          ID TallerGP: {material.material_id}
-                        </p>
                       </td>
                       <td className="p-4 font-mono text-zinc-300">
                         {barcode || "-"}
@@ -1945,7 +1954,10 @@ function MaterialsAdminPanel({
                           {barcode ? (
                             <button
                               type="button"
-                              onClick={() => onPrintMaterial(material)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onPrintMaterial(material);
+                              }}
                               className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 font-semibold text-white transition-all hover:bg-cyan-500"
                             >
                               <Printer size={16} />
@@ -1954,7 +1966,10 @@ function MaterialsAdminPanel({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => generateBarcodeForMaterial(material)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                generateBarcodeForMaterial(material);
+                              }}
                               disabled={isGeneratingBarcode || savingMaterial}
                               className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 font-semibold text-cyan-200 transition-all hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                             >
@@ -1968,7 +1983,19 @@ function MaterialsAdminPanel({
                           )}
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedMaterial(material);
+                            }}
+                            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-semibold text-zinc-200 transition-all hover:bg-zinc-800"
+                          >
+                            <Eye size={16} />
+                            Ver
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setEditingMaterial(material);
                               setMaterialSavedMessage("");
                               setMaterialsError("");
@@ -1989,6 +2016,20 @@ function MaterialsAdminPanel({
         )}
       </div>
 
+      {selectedMaterial && (
+        <MaterialDetailModal
+          material={selectedMaterial}
+          onClose={() => setSelectedMaterial(null)}
+          onEdit={(materialToEdit) => {
+            setSelectedMaterial(null);
+            setEditingMaterial(materialToEdit);
+            setMaterialSavedMessage("");
+            setMaterialsError("");
+          }}
+          onPrint={onPrintMaterial}
+        />
+      )}
+
       {editingMaterial && (
         <MaterialEditorModal
           material={editingMaterial}
@@ -1997,6 +2038,395 @@ function MaterialsAdminPanel({
           onSave={saveMaterial}
         />
       )}
+    </div>
+  );
+}
+
+const MATERIAL_DETAIL_EXCLUDED_FIELDS = new Set([
+  "material_id",
+  "reference",
+  "name",
+  "description",
+  "barcode",
+  "ean",
+  "serial_number",
+  "quantity",
+  "unit",
+  "pvp",
+  "cost",
+  "iva",
+  "tax_rate",
+  "alert_threshold",
+  "photos",
+  "stock_movements",
+  "created_at",
+  "updated_at",
+]);
+
+function MaterialDetailModal({
+  material,
+  onClose,
+  onEdit,
+  onPrint,
+}: {
+  material: Material;
+  onClose: () => void;
+  onEdit: (material: Material) => void;
+  onPrint: (material: Material) => void;
+}) {
+  const [details, setDetails] = useState<Material | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [movementRows, setMovementRows] = useState<Adjustment[]>([]);
+  const [loadingMovements, setLoadingMovements] = useState(false);
+  const [movementsError, setMovementsError] = useState("");
+  const [tallergpMovements, setTallergpMovements] = useState<
+    TallerGpMaterialMovement[]
+  >([]);
+  const [loadingTallergpMovements, setLoadingTallergpMovements] = useState(false);
+  const [tallergpMovementsError, setTallergpMovementsError] = useState("");
+  const displayMaterial = details || material;
+  const barcode = getMaterialBarcode(displayMaterial);
+  const name = getMaterialName(displayMaterial);
+  const taxRate = toOptionalNumber(displayMaterial.tax_rate ?? displayMaterial.iva);
+  const pvp = toOptionalNumber(displayMaterial.pvp);
+  const pvpWithTax =
+    pvp !== undefined && taxRate !== undefined ? pvp * (1 + taxRate / 100) : undefined;
+  const stockMovements = Array.isArray(displayMaterial.stock_movements)
+    ? displayMaterial.stock_movements
+    : [];
+  const photos = Array.isArray(displayMaterial.photos) ? displayMaterial.photos : [];
+  const extraFields = Object.entries(displayMaterial).filter(
+    ([key, value]) =>
+      !MATERIAL_DETAIL_EXCLUDED_FIELDS.has(key) &&
+      value !== undefined &&
+      value !== null &&
+      value !== ""
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.resolve().then(async () => {
+      setLoadingDetails(true);
+      setDetailsError("");
+
+      try {
+        const response = await axios.get<Material>("/api/materials", {
+          params: { material_id: material.material_id },
+        });
+
+        if (isMounted) {
+          setDetails(response.data);
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Error desconocido";
+
+        if (isMounted) {
+          setDetailsError(`No se pudo cargar la ficha completa: ${message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingDetails(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [material.material_id]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.resolve().then(async () => {
+      setLoadingMovements(true);
+      setMovementsError("");
+
+      try {
+        const response = await axios.get<Adjustment[]>("/api/adjustments", {
+          params: {
+            material_id: material.material_id,
+            reference: material.reference,
+          },
+        });
+
+        if (isMounted) {
+          setMovementRows(response.data);
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Error desconocido";
+
+        if (isMounted) {
+          setMovementsError(`No se pudieron cargar los movimientos locales: ${message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingMovements(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [material.material_id, material.reference]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void Promise.resolve().then(async () => {
+      setLoadingTallergpMovements(true);
+      setTallergpMovementsError("");
+
+      try {
+        const response = await axios.get<TallerGpMaterialMovement[]>("/api/materials", {
+          params: {
+            material_id: material.material_id,
+            movements: "true",
+          },
+        });
+
+        if (isMounted) {
+          setTallergpMovements(response.data);
+        }
+      } catch (error) {
+        const message = axios.isAxiosError(error)
+          ? error.response?.data?.error || error.message
+          : "Error desconocido";
+
+        if (isMounted) {
+          setTallergpMovementsError(
+            `No se pudieron cargar los movimientos de TallerGP: ${message}`
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingTallergpMovements(false);
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [material.material_id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/80 p-4 backdrop-blur-sm md:items-center md:justify-center">
+      <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 p-4">
+          <div className="min-w-0">
+            <p className="font-mono text-sm font-bold text-cyan-400">
+              {displayMaterial.reference}
+            </p>
+            <h2 className="truncate text-xl font-bold text-white">{name}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-5 p-5">
+          {detailsError && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+              {detailsError}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-sm font-bold text-emerald-300">
+              {loadingDetails ? "Actualizando ficha..." : "Ficha de material"}
+            </span>
+            {barcode && (
+              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 font-mono text-sm font-bold text-cyan-300">
+                {barcode}
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <InfoBox label="Stock" value={`${Number(displayMaterial.quantity ?? 0)} u`} />
+            <InfoBox label="Alerta" value={displayMaterial.alert_threshold ?? "-"} />
+            <InfoBox label="Coste" value={formatMoney(displayMaterial.cost)} />
+            <InfoBox label="PVP con IVA" value={formatMoney(pvpWithTax)} />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+              <h3 className="mb-3 font-bold text-white">Detalles del producto</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                <InfoLine label="ID TallerGP" value={displayMaterial.material_id} />
+                <InfoLine label="Referencia" value={displayMaterial.reference || "-"} />
+                <InfoLine label="Articulo" value={name || "-"} />
+                <InfoLine label="Descripcion" value={displayMaterial.description || "-"} />
+                <InfoLine label="Codigo" value={barcode || "-"} />
+                <InfoLine label="EAN" value={displayMaterial.ean || "-"} />
+                <InfoLine
+                  label="Numero de serie"
+                  value={displayMaterial.serial_number || "-"}
+                />
+                <InfoLine label="Unidad" value={displayMaterial.unit || "-"} />
+                <InfoLine label="Stock" value={displayMaterial.quantity ?? "-"} />
+                <InfoLine label="Coste" value={formatMoney(displayMaterial.cost)} />
+                <InfoLine label="PVP sin IVA" value={formatMoney(pvp)} />
+                <InfoLine label="IVA" value={formatPercent(taxRate)} />
+                <InfoLine label="PVP con IVA" value={formatMoney(pvpWithTax)} />
+                <InfoLine
+                  label="Alerta stock"
+                  value={displayMaterial.alert_threshold ?? "-"}
+                />
+                <InfoLine label="Creado" value={formatDate(displayMaterial.created_at)} />
+                <InfoLine
+                  label="Actualizado"
+                  value={formatDate(displayMaterial.updated_at)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+              <h3 className="mb-3 font-bold text-white">Fotos y campos extra</h3>
+              {photos.length > 0 ? (
+                <div className="mb-4 grid grid-cols-2 gap-3">
+                  {photos.slice(0, 4).map((photo) => (
+                    <a
+                      key={photo.id || photo.url}
+                      href={photo.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.thumbnail || photo.url}
+                        alt={name}
+                        className="aspect-square w-full object-cover"
+                      />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-zinc-500">No hay fotos en la ficha.</p>
+              )}
+
+              {extraFields.length === 0 ? (
+                <p className="text-sm text-zinc-500">No hay otros campos devueltos.</p>
+              ) : (
+                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                  {extraFields.map(([key, value]) => (
+                    <InfoLine
+                      key={key}
+                      label={key}
+                      value={formatDetailValue(value)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-white">Movimientos en TallerGP</h3>
+                <p className="text-sm text-zinc-500">
+                  Historial completo devuelto para este material.
+                </p>
+              </div>
+              {loadingTallergpMovements && (
+                <Loader2 size={18} className="animate-spin text-cyan-400" />
+              )}
+            </div>
+            <TallergpMovementsTable
+              rows={tallergpMovements}
+              loading={loadingTallergpMovements}
+              error={tallergpMovementsError}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-white">Movimientos en Cazapiezas</h3>
+                <p className="text-sm text-zinc-500">
+                  Ajustes, salidas y altas guardadas por la app.
+                </p>
+              </div>
+              {loadingMovements && (
+                <Loader2 size={18} className="animate-spin text-cyan-400" />
+              )}
+            </div>
+            <LocalMovementsTable
+              rows={movementRows}
+              loading={loadingMovements}
+              error={movementsError}
+            />
+          </div>
+
+          {stockMovements.length > 0 && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+              <h3 className="mb-3 font-bold text-white">Movimientos incluidos en ficha</h3>
+              <div className="max-h-72 overflow-y-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="sticky top-0 bg-zinc-950 text-xs uppercase tracking-wider text-zinc-500">
+                    <tr>
+                      <th className="py-2 pr-3">Fecha</th>
+                      <th className="py-2 pr-3">Tipo</th>
+                      <th className="py-2 pr-3 text-right">Cantidad</th>
+                      <th className="py-2">Notas</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800">
+                    {stockMovements.map((movement) => (
+                      <tr key={movement.id || `${movement.date}-${movement.quantity}`}>
+                        <td className="py-2 pr-3 text-zinc-400">
+                          {formatDate(movement.date)}
+                        </td>
+                        <td className="py-2 pr-3 text-zinc-300">{movement.type}</td>
+                        <td className="py-2 pr-3 text-right font-bold text-white">
+                          {movement.quantity}
+                        </td>
+                        <td className="py-2 text-zinc-400">
+                          {movement.reason || movement.notes || "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onEdit(displayMaterial)}
+              className="inline-flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 font-semibold text-white transition-colors hover:bg-zinc-700"
+            >
+              <Edit3 size={16} />
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={() => onPrint(displayMaterial)}
+              disabled={!barcode}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-cyan-500 disabled:opacity-50"
+            >
+              <Printer size={16} />
+              Imprimir etiqueta
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2758,13 +3188,167 @@ function ProductQuickView({
   );
 }
 
-function formatMoney(value?: number) {
+function TallergpMovementsTable({
+  rows,
+  loading,
+  error,
+}: {
+  rows: TallerGpMaterialMovement[];
+  loading: boolean;
+  error: string;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+        {error}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <p className="text-sm text-zinc-500">Cargando movimientos...</p>;
+  }
+
+  if (rows.length === 0) {
+    return <p className="text-sm text-zinc-500">TallerGP no devolvio movimientos.</p>;
+  }
+
+  return (
+    <div className="max-h-80 overflow-y-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-950 text-xs uppercase tracking-wider text-zinc-500">
+          <tr>
+            <th className="py-2 pr-3">Fecha</th>
+            <th className="py-2 pr-3 text-right">Cantidad</th>
+            <th className="py-2 pr-3">Origen</th>
+            <th className="py-2">Descripcion</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-800">
+          {rows.map((movement) => (
+            <tr key={movement.id}>
+              <td className="py-2 pr-3 text-zinc-400">
+                {formatDate(movement.movement_date)}
+              </td>
+              <td
+                className={`py-2 pr-3 text-right font-bold ${
+                  Number(movement.quantity ?? 0) >= 0
+                    ? "text-emerald-300"
+                    : "text-red-300"
+                }`}
+              >
+                {Number(movement.quantity ?? 0) > 0
+                  ? `+${movement.quantity}`
+                  : movement.quantity ?? "-"}
+              </td>
+              <td className="py-2 pr-3 text-zinc-300">
+                {getMovementSource(movement)}
+              </td>
+              <td className="py-2 text-zinc-400">{movement.description || "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LocalMovementsTable({
+  rows,
+  loading,
+  error,
+}: {
+  rows: Adjustment[];
+  loading: boolean;
+  error: string;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+        {error}
+      </div>
+    );
+  }
+
+  if (loading) {
+    return <p className="text-sm text-zinc-500">Cargando movimientos...</p>;
+  }
+
+  if (rows.length === 0) {
+    return <p className="text-sm text-zinc-500">No hay movimientos guardados.</p>;
+  }
+
+  return (
+    <div className="max-h-80 overflow-y-auto">
+      <table className="w-full text-left text-sm">
+        <thead className="sticky top-0 bg-zinc-950 text-xs uppercase tracking-wider text-zinc-500">
+          <tr>
+            <th className="py-2 pr-3">Fecha</th>
+            <th className="py-2 pr-3">Origen</th>
+            <th className="py-2 pr-3 text-center">Antes</th>
+            <th className="py-2 pr-3 text-center">Despues</th>
+            <th className="py-2 text-right">Mov.</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-800">
+          {rows.map((movement) => {
+            const employee =
+              movement.name?.startsWith("[ADMIN]")
+                ? "Admin"
+                : movement.name?.match(EMPLOYEE_PREFIX_PATTERN)?.[1] || "-";
+            const isCreation =
+              movement.status === "created" ||
+              movement.name?.startsWith(PRODUCT_CREATED_PREFIX);
+
+            return (
+              <tr key={movement.id || `${movement.created_at}-${movement.difference}`}>
+                <td className="py-2 pr-3 text-zinc-400">
+                  {formatDate(movement.created_at)}
+                </td>
+                <td className="py-2 pr-3 text-zinc-300">
+                  {isCreation ? "Alta" : employee}
+                </td>
+                <td className="py-2 pr-3 text-center text-zinc-500">
+                  {isCreation ? "-" : movement.quantity_before}
+                </td>
+                <td className="py-2 pr-3 text-center font-semibold text-white">
+                  {movement.quantity_after}
+                </td>
+                <td
+                  className={`py-2 text-right font-bold ${
+                    movement.difference >= 0 ? "text-emerald-300" : "text-red-300"
+                  }`}
+                >
+                  {movement.difference > 0 ? `+${movement.difference}` : movement.difference}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatDetailValue(value: unknown) {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `${value.length} registros`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function formatMoney(value?: unknown) {
   const numberValue = toOptionalNumber(value);
 
   return numberValue !== undefined ? `${numberValue.toFixed(2)} EUR` : "-";
 }
 
-function formatPercent(value?: number) {
+function formatPercent(value?: unknown) {
   const numberValue = toOptionalNumber(value);
 
   return numberValue !== undefined ? `${numberValue}%` : "-";
