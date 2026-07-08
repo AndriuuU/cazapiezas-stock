@@ -1,194 +1,261 @@
-# 📦 Cazapiezas - Stock Manager
+<div align="center">
 
-Una app moderna para escanear códigos de barras y gestionar el stock de materiales en tallergp.
+# 🔧 Cazapiezas Stock
 
-## ✨ Características
+**Aplicación web privada para consultar, escanear y administrar el stock de materiales de Cazapiezas**
 
-- **Escaneo QR/Código de Barras** - Usa la cámara del dispositivo para escanear
-- **Búsqueda Manual** - Ingresa el código manualmente si el escaneo falla
-- **Visualización Completa** - Ve toda la información del material:
-  - Stock actual
-  - Precio de venta (PVP)
-  - Coste
-  - IVA
-  - Historial de movimientos
-- **Modificación de Cantidad** - Cambia la cantidad localmente (demostración)
-- **Diseño Responsivo** - Funciona perfectamente en móvil y web
-- **Interfaz Moderna** - UI oscura con acentos de cyan
+Integrada con **TallerGP** y **Supabase**
 
-## 🚀 Instalación
+[![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?logo=next.js&logoColor=white)](#)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](#)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css&logoColor=white)](#)
+[![Status](https://img.shields.io/badge/estado-privado-lightgrey)](#)
 
-1. **Clona los archivos actualizados a tu proyecto:**
-   ```bash
-   # Reemplaza los archivos en tu proyecto con los proporcionados
-   ```
+</div>
 
-2. **Instala las dependencias:**
-   ```bash
-   npm install
-   # o
-   yarn install
-   ```
+---
 
-3. **Configura las variables de entorno:**
-   ```bash
-   # Copia .env.example a .env.local
-   cp .env.example .env.local
-   
-   # Edita .env.local con tu URL y token de tallergp
-   NEXT_PUBLIC_TALLERGP_URL=https://tu-api-url.com
-   NEXT_PUBLIC_TALLERGP_TOKEN=tu_token_jwt_aqui
-   ```
+## 📚 Índice
 
-4. **Inicia el servidor de desarrollo:**
-   ```bash
-   npm run dev
-   # o
-   yarn dev
-   ```
+- [Vista general](#-vista-general)
+- [Funcionalidades](#-funcionalidades)
+- [Requisitos](#-requisitos)
+- [Variables de entorno](#-variables-de-entorno)
+- [Instalación y desarrollo](#-instalación-y-desarrollo)
+- [Scripts útiles](#-scripts-útiles)
+- [Flujo de uso](#-flujo-de-uso)
+- [Catálogo local y caché](#-catálogo-local-y-caché)
+- [Estructura del proyecto](#-estructura-del-proyecto)
+- [Validación antes de subir versión](#-validación-antes-de-subir-versión)
+- [Problemas conocidos](#-problemas-conocidos)
+- [Futuras mejoras](#-futuras-mejoras)
+- [Licencia](#-licencia)
 
-5. **Abre en el navegador:**
-   ```
-   http://localhost:3000
-   ```
+---
 
-## 📱 Uso
+## 🧭 Vista General
 
-### Escanear Código de Barras
-1. Toca el botón "Escanear Código de Barras"
-2. Apunta la cámara al código
-3. El material se cargará automáticamente
+**Cazapiezas Stock** centraliza las tareas diarias de almacén en una única aplicación:
 
-### Búsqueda Manual
-1. Escribe el código de barras en el campo
-2. Presiona Enter o toca "Buscar"
-3. El material aparecerá si existe
+| | |
+|---|---|
+| 🔍 | Buscar materiales de forma rápida |
+| 📷 | Escanear códigos de barras desde móvil o escritorio |
+| 📋 | Consultar fichas completas de producto |
+| 📉 | Registrar salidas y ajustes de stock |
+| ➕ | Crear productos nuevos |
+| 🏷️ | Imprimir etiquetas |
+| 📊 | Revisar movimientos desde el panel de administración |
 
-### Ver Detalles
-- Toca la tarjeta del producto para ver más información
-- Desplázate para ver el historial de movimientos
-- Los datos se obtienen en tiempo real de tallergp
+Construida con **Next.js App Router**, **React**, **TypeScript** y **Tailwind CSS**. La comunicación con TallerGP pasa siempre por rutas API internas, evitando exponer credenciales sensibles en el navegador.
 
-### Cambiar Cantidad
-1. Usa los botones + y - para cambiar la cantidad
-2. O escribe directamente en el campo
-3. **Nota:** Los cambios son locales solo en esta sesión (demostración)
+### Home
+![Pantalla principal](doc\screenshots\Home.png)
 
-## 🏗️ Estructura del Proyecto
+### Panel de Admin
+![Pantalla Admin](doc\screenshots\admin.png)
 
-```
-src/
-├── app/
-│   ├── page.tsx              # Página principal con lógica
-│   ├── layout.tsx            # Layout base
-│   └── globals.css           # Estilos globales
-├── components/
-│   ├── Scanner.tsx           # Componente de escaneo
-│   ├── ProductCard.tsx       # Modal con detalles del producto
-│   └── QuantityPanel.tsx     # Panel para cambiar cantidad
-├── services/
-│   ├── materials.ts          # Funciones de búsqueda de materiales
-│   └── tallergp.ts           # Cliente Axios configurado
-└── types/
-    └── material.ts           # Tipos TypeScript
+---
+
+## ⚙️ Funcionalidades
+
+### 🏠 Pantalla Principal
+
+- Búsqueda por código, referencia, serie, EAN, nombre o descripción.
+- Escaneo de códigos de barras con la cámara del dispositivo.
+- Catálogo local en `localStorage` para acelerar búsquedas.
+- Recarga automática del catálogo cada **2 horas**.
+- Ficha de producto con stock, precios, IVA, imágenes y ajuste de cantidad.
+- Registro de salidas y ajustes con empleado asociado.
+
+### 🛠️ Panel de Administración
+
+Disponible en:
+
+```text
+/admin
 ```
 
-## 🔧 Componentes
+Incluye:
 
-### Scanner.tsx
-- Escanea códigos de barras y QR
-- Usa la librería `@zxing/browser`
-- Preferencia por cámara trasera en móvil
-- Bloquea escaneos duplicados en 1 segundo
+- Dashboard de actividad reciente.
+- Movimientos de stock.
+- Administración de materiales.
+- Detalle completo de cada material al pulsar en la fila, en la referencia o en `Ver`.
+- Visualización del ID interno de TallerGP solo dentro de la ficha del material.
+- Movimientos de TallerGP y movimientos guardados en Cazapiezas.
+- Edición de stock, código, precios y umbrales.
+- Alta de productos nuevos.
+- Generación e impresión de etiquetas.
+- Gestión de empleados.
+- Exportaciones y copias de seguridad.
 
-### ProductCard.tsx
-- Modal con toda la información del material
-- Muestra historial de movimientos
-- Indicador de cambios locales
-- Responsive en móvil y desktop
+### 🚀 Rendimiento y Estabilidad
 
-### QuantityPanel.tsx
-- Controles para aumentar/disminuir cantidad
-- Validación de límites
-- Indicador visual del estado del stock
-- Entrada numérica editable
+- Caché local del catálogo para reducir carga.
+- Caché interno en la API para detalles y movimientos de materiales.
+- Reducción de errores `429 Too Many Requests` al abrir fichas repetidas.
+- Fuentes del sistema para que `npm run build` no dependa de descargar Google Fonts.
 
-## 🎨 Diseño
+---
 
-- **Color Scheme:** Zinc (gris) con acentos de cyan y gradientes
-- **Tipografía:** Fuentes del sistema optimizadas
-- **Espaciado:** Generoso con bordes redondeados (xl)
-- **Animaciones:** Transiciones suaves y feedback visual
+## ✅ Requisitos
 
-## 📊 APIs Utilizadas
+- Node.js compatible con Next.js 16.
+- Acceso a la API de TallerGP.
+- Proyecto Supabase o endpoint REST compatible para movimientos, empleados y eventos internos.
 
-### GET /materials
-Obtiene la lista de materiales con paginación.
+---
 
-```json
-{
-  "pagination": {
-    "current_page": 1,
-    "per_page": 10,
-    "total_count": 285,
-    "total_pages": 29
-  },
-  "data": [...]
-}
+## 🔐 Variables de Entorno
+
+Crea un archivo `.env.local` en la raíz del proyecto:
+
+```env
+TALLERGP_URL=https://tu-api-tallergp.com
+TALLERGP_TOKEN=tu_token_de_tallergp
+
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_ANON_KEY=tu_anon_key
 ```
 
-### GET /materials/{material_id}
-Obtiene los detalles completos de un material incluyendo movimientos de stock.
+> **⚠️ Importante**
+> - `TALLERGP_URL` y `TALLERGP_TOKEN` deben ser variables de servidor.
+> - También se soportan `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` como respaldo.
+> - **No** uses `NEXT_PUBLIC_TALLERGP_TOKEN`: expondría el token en el navegador.
 
-```json
-{
-  "material_id": "...",
-  "name": "...",
-  "quantity": 6,
-  "stock_movements": [...],
-  "photos": [...]
-}
+---
+
+## 💻 Instalación y Desarrollo
+
+```bash
+npm install
+npm run dev
 ```
 
-## 🔐 Seguridad
+Servidor local:
 
-- Las variables de ambiente con `NEXT_PUBLIC_` son expuestas al cliente (necesario para el navegador)
-- El token se envía en todas las peticiones a tallergp
-- Asegúrate que el token tiene los permisos correctos en tu API
+```text
+http://localhost:3000
+```
 
-## 🐛 Troubleshooting
+---
 
-### La cámara no funciona
-- Verifica que el navegador tenga permisos de cámara
-- En HTTPS, iOS requiere que abras desde el ícono de la app
-- En Android, concede permisos manualmente
+## 📜 Scripts Útiles
 
-### Dice "Material no encontrado"
-- Verifica que el código de barras sea correcto
-- Asegúrate que el material existe en tallergp
-- El `serial_number` debe coincidir exactamente
+| Comando | Descripción |
+|---|---|
+| `npm run dev` | Servidor de desarrollo |
+| `npm run lint` | Revisión con ESLint |
+| `npx tsc --noEmit` | Revisión de TypeScript |
+| `npm run build` | Build de producción |
+| `npm run start` | Servidor de producción |
 
-### Error de autenticación
-- Revisa que el `NEXT_PUBLIC_TALLERGP_TOKEN` sea válido
-- Verifica que el token no ha expirado
-- Confirma que la URL de la API es correcta
+---
 
-## 📝 Notas
+## 🔄 Flujo de Uso
 
-- La app NO modifica el stock en tallergp (es solo lectura + demostración local)
-- Todos los datos se obtienen en tiempo real de la API
-- La cantidad local se reinicia cuando cierras la tarjeta del producto
-- Compatible con navegadores modernos en móvil y desktop
+1. Abre la pantalla principal.
+2. Deja que cargue el catálogo local o pulsa **Actualizar**.
+3. Busca un material por referencia, código, nombre o escaneando el código de barras.
+4. Abre la ficha para revisar datos y ajustar stock.
+5. Selecciona el empleado al registrar una salida o ajuste.
+6. Usa `/admin` para materiales, etiquetas, empleados, exportaciones y movimientos.
 
-## 🚀 Próximas Características
+---
 
-- [ ] Endpoint para guardar cambios de cantidad
-- [ ] Historial de cambios locales
-- [ ] Sincronización con servidor
-- [ ] Caché offline
-- [ ] Búsqueda por referencia o nombre
-- [ ] Impresión de etiquetas
+## 🗄️ Catálogo Local y Caché
+
+El catálogo local se guarda en el navegador con `localStorage`.
+
+- Caduca cada **2 horas**.
+- Se puede forzar la recarga con **Actualizar**.
+- La pantalla muestra número de productos, tamaño aproximado y fecha/hora de la última actualización.
+- Si TallerGP limita peticiones, la app intenta seguir usando datos locales cuando es posible.
+
+La API interna mantiene una caché corta en memoria para detalles y movimientos. Esto evita repetir la misma llamada cuando React ejecuta efectos dos veces en desarrollo o cuando se abre varias veces el mismo material.
+
+---
+
+## 🗂️ Estructura del Proyecto
+
+```text
+app/
+├── page.tsx                    Pantalla principal
+├── admin/page.tsx              Panel de administración
+└── api/
+    ├── materials/route.ts      Proxy y operaciones de materiales
+    ├── adjustments/route.ts    Movimientos y ajustes internos
+    └── employees/route.ts      Empleados
+
+components/
+├── CacheLoader.tsx             Carga y estado del catálogo local
+├── MaterialsList.tsx           Lista de catálogo en pantalla principal
+├── NewProductForm.tsx          Alta de productos
+├── ProductCard.tsx             Ficha de producto
+└── Scanner.tsx                 Escaneo de códigos
+
+services/
+├── cache.ts                    Catálogo local y caducidad
+├── search.ts                   Búsqueda sobre caché
+└── materials.ts                Utilidades de materiales
+
+lib/
+├── barcodes.ts                 Generación de códigos internos
+└── supabase.ts                 Configuración REST de Supabase
+
+types/
+└── material.ts                 Tipos de materiales
+```
+
+---
+
+## 🧪 Validación Antes de Subir Versión
+
+Antes de publicar o subir versión:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+**Estado de la última revisión:**
+
+| Comprobación | Estado |
+|---|---|
+| `npm run lint` | ✅ Correcto |
+| `npx tsc --noEmit` | ✅ Correcto |
+| `npm run build` | ✅ Correcto |
+
+---
+
+## 🐞 Problemas Conocidos
+
+- TallerGP puede responder `429 Too Many Requests` si se fuerzan muchas recargas o se abren muchas fichas seguidas.
+- En desarrollo, React puede duplicar algunas peticiones para detectar efectos inseguros.
+- El catálogo local depende del navegador; si se vacían los datos del sitio, hay que recargarlo.
+- `next-env.d.ts` lo genera Next.js y está ignorado por Git. Si una build local falla intentando reescribirlo, ejecuta de nuevo con permisos normales del usuario o regenera tipos con:
+
+```bash
+npx next typegen
+```
+
+---
+
+## 🚧 Futuras Mejoras
+
+- [ ] Mostrar avisos más claros cuando TallerGP limite peticiones.
+- [ ] Mejorar la caché de movimientos con invalidación selectiva tras ajustes de stock.
+- [ ] Añadir paginación o carga progresiva en historiales de movimientos grandes.
+- [ ] Unificar exportaciones con filtros por fecha, empleado y tipo de movimiento.
+- [ ] Crear tests end-to-end para búsqueda, ajuste de stock, alta de producto e impresión de etiquetas.
+- [ ] Añadir auditoría completa de cambios de material.
+- [ ] Mejorar el modo offline con cola de movimientos pendientes.
+
+
+---
 
 ## 📄 Licencia
 
-Proyecto privado para tallergp.
+Proyecto privado para **Cazapiezas**.
