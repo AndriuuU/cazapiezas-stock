@@ -15,6 +15,8 @@ const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const PRODUCT_BARCODE_SUFFIX_PREFIX = " [CODIGO: ";
 const PRODUCT_SNAPSHOT_SUFFIX_PREFIX = " [FICHA: ";
 const PRODUCT_KEYS_CACHE_MS = 5 * 60 * 1000;
+const MATERIAL_DETAIL_CACHE_MS = 2 * 60 * 1000;
+const MATERIAL_MOVEMENTS_CACHE_MS = 2 * 60 * 1000;
 const MATERIALS_PER_PAGE = 100;
 let productKeysCache:
   | {
@@ -25,6 +27,22 @@ let productKeysCache:
       };
     }
   | undefined;
+const materialDetailCache = new Map<
+  string,
+  { fetchedAt: number; data: Record<string, unknown> }
+>();
+const materialDetailRequests = new Map<
+  string,
+  Promise<Record<string, unknown>>
+>();
+const materialMovementsCache = new Map<
+  string,
+  { fetchedAt: number; data: Record<string, unknown>[] }
+>();
+const materialMovementsRequests = new Map<
+  string,
+  Promise<Record<string, unknown>[]>
+>();
 
 interface ProductSnapshot {
   reference: string;
@@ -359,6 +377,71 @@ async function fetchMaterialMovements(materialId: string) {
   return allMovements;
 }
 
+async function getCachedMaterialDetails(materialId: string) {
+  const cached = materialDetailCache.get(materialId);
+
+  if (cached && Date.now() - cached.fetchedAt < MATERIAL_DETAIL_CACHE_MS) {
+    return cached.data;
+  }
+
+  const pending = materialDetailRequests.get(materialId);
+
+  if (pending) {
+    return pending;
+  }
+
+  const request = tallergpClient
+    .get(`/materials/${materialId}`)
+    .then((response) => {
+      const data = response.data as Record<string, unknown>;
+      materialDetailCache.set(materialId, { fetchedAt: Date.now(), data });
+
+      return data;
+    })
+    .finally(() => {
+      materialDetailRequests.delete(materialId);
+    });
+
+  materialDetailRequests.set(materialId, request);
+
+  return request;
+}
+
+async function getCachedMaterialMovements(materialId: string) {
+  const cached = materialMovementsCache.get(materialId);
+
+  if (cached && Date.now() - cached.fetchedAt < MATERIAL_MOVEMENTS_CACHE_MS) {
+    return cached.data;
+  }
+
+  const pending = materialMovementsRequests.get(materialId);
+
+  if (pending) {
+    return pending;
+  }
+
+  const request = fetchMaterialMovements(materialId)
+    .then((data) => {
+      materialMovementsCache.set(materialId, { fetchedAt: Date.now(), data });
+
+      return data;
+    })
+    .finally(() => {
+      materialMovementsRequests.delete(materialId);
+    });
+
+  materialMovementsRequests.set(materialId, request);
+
+  return request;
+}
+
+function invalidateMaterialCaches(materialId: string) {
+  materialDetailCache.delete(materialId);
+  materialDetailRequests.delete(materialId);
+  materialMovementsCache.delete(materialId);
+  materialMovementsRequests.delete(materialId);
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -367,13 +450,11 @@ export async function GET(request: Request) {
     const all = searchParams.get("all") === "true";
 
     if (materialId && movements) {
-      return NextResponse.json(await fetchMaterialMovements(materialId));
+      return NextResponse.json(await getCachedMaterialMovements(materialId));
     }
 
     if (materialId) {
-      const response = await tallergpClient.get(`/materials/${materialId}`);
-
-      return NextResponse.json(response.data);
+      return NextResponse.json(await getCachedMaterialDetails(materialId));
     }
 
     if (all) {
@@ -514,6 +595,11 @@ export async function PUT(request: Request) {
       }
     }
     productKeysCache = undefined;
+    invalidateMaterialCaches(materialId);
+    materialDetailCache.set(materialId, {
+      fetchedAt: Date.now(),
+      data: updatedMaterial as Record<string, unknown>,
+    });
 
     return NextResponse.json({
       material: updatedMaterial,
@@ -573,6 +659,14 @@ export async function POST(request: Request) {
     const response = await tallergpClient.post("/materials", payload);
     productKeysCache = undefined;
     const createdMaterial = response.data || {};
+    const createdMaterialId = String(createdMaterial.material_id || "").trim();
+
+    if (createdMaterialId) {
+      materialDetailCache.set(createdMaterialId, {
+        fetchedAt: Date.now(),
+        data: createdMaterial as Record<string, unknown>,
+      });
+    }
     const createdBarcode =
       String(createdMaterial.barcode || createdMaterial.ean || createdMaterial.serial_number || "").trim() ||
       serialNumber;
