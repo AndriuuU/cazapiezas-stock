@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 import {
   AlertCircle,
   ChevronDown,
@@ -49,7 +50,11 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
         setCacheInfo(info);
         onCacheLoaded?.(materials.length);
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : "Error desconocido";
+        const errorMsg = axios.isAxiosError(err)
+          ? err.response?.data?.error || err.message
+          : err instanceof Error
+            ? err.message
+            : "Error desconocido";
         setError(`Error cargando materiales: ${errorMsg}`);
         onError?.(errorMsg);
       } finally {

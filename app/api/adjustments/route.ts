@@ -1,6 +1,7 @@
 // app/api/adjustments/route.ts
 import { NextResponse } from "next/server";
 import axios from "axios";
+import { protectApiRequest } from "@/lib/request-security";
 
 interface StockAdjustment {
   id?: string;
@@ -230,6 +231,16 @@ async function updateAdjustmentStatus(id: string, status: string) {
 
 // Registra un nuevo ajuste y aplica el stock total en TallerGP.
 export async function POST(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "adjustments:write",
+    limit: 30,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const body = await request.json();
     const {
@@ -329,6 +340,16 @@ async function enrichAdjustments(data: StockAdjustment[]) {
 
 // Obtiene los ultimos movimientos guardados o los de un material concreto.
 export async function GET(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "adjustments:get",
+    limit: 60,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const materialId = searchParams.get("material_id")?.trim() || "";
@@ -346,6 +367,16 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "adjustments:write",
+    limit: 30,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const { id, status } = await request.json();
 

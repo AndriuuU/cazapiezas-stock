@@ -1,6 +1,7 @@
 import axios from "axios";
 import { NextResponse } from "next/server";
 import { createInternalEan13 } from "@/lib/barcodes";
+import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseRestConfig } from "@/lib/supabase";
 
 const tallergpClient = axios.create({
@@ -443,6 +444,16 @@ function invalidateMaterialCaches(materialId: string) {
 }
 
 export async function GET(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "materials:get",
+    limit: 35,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const materialId = searchParams.get("material_id")?.trim();
@@ -505,6 +516,16 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "materials:write",
+    limit: 20,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const body = await request.json();
     const materialId = String(body.material_id || "").trim();
@@ -615,6 +636,16 @@ export async function PUT(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "materials:write",
+    limit: 20,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const body = await request.json();
     const reference = String(body.reference || "").trim().toUpperCase();

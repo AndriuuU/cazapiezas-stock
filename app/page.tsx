@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 import { AlertCircle, CheckCircle, List, Loader2, PackagePlus, Search } from "lucide-react";
 import CacheLoader from "@/components/CacheLoader";
 import Logo from "@/components/Logo";
@@ -90,9 +91,13 @@ export default function Home() {
           setScannedCode("");
         }
       } catch (err) {
-        setError(
-          `Error en la búsqueda: ${err instanceof Error ? err.message : "Error desconocido"}`
-        );
+        const message = axios.isAxiosError(err)
+          ? err.response?.data?.error || err.message
+          : err instanceof Error
+            ? err.message
+            : "Error desconocido";
+
+        setError(`Error en la búsqueda: ${message}`);
       } finally {
         setLoading(false);
       }
