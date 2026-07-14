@@ -11,12 +11,14 @@ export interface Material {
   pvp?: number; // Precio de venta al público
   cost?: number; // Coste
   iva?: number; // IVA
+  tax_rate?: number;
+  alert_threshold?: number;
   photos?: Photo[];
   stock_movements?: StockMovement[];
   created_at?: string;
   updated_at?: string;
   // Campos adicionales que tu API pueda tener
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface Photo {

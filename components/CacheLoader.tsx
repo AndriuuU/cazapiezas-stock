@@ -9,7 +9,12 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { clearCache, getCacheInfo, loadAllMaterials } from "@/services/cache";
+import {
+  CACHE_EXPIRY_HOURS,
+  clearCache,
+  getCacheInfo,
+  loadAllMaterials,
+} from "@/services/cache";
 
 interface CacheLoaderProps {
   onCacheLoaded?: (count: number) => void;
@@ -22,6 +27,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
     itemCount: 0,
     sizeKB: 0,
     lastUpdated: null as string | null,
+    lastUpdatedAt: null as number | null,
     isExpired: true,
   });
   const [error, setError] = useState("");
@@ -34,6 +40,10 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
         setError("");
 
         const materials = await loadAllMaterials(forceRefresh);
+        
+        // Pequeño delay para asegurar que localStorage se ha actualizado
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const info = getCacheInfo();
 
         setCacheInfo(info);
@@ -72,7 +82,7 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
       if (info.itemCount > 0 && info.isExpired) {
         void loadCache(false);
       }
-    }, 60 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
     return () => window.clearInterval(intervalId);
   }, [loadCache]);
@@ -86,6 +96,13 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
     const info = getCacheInfo();
     setCacheInfo(info);
   };
+  const lastUpdatedLabel =
+    cacheInfo.lastUpdatedAt !== null
+      ? new Intl.DateTimeFormat("es-ES", {
+          dateStyle: "short",
+          timeStyle: "short",
+        }).format(new Date(cacheInfo.lastUpdatedAt))
+      : "Nunca";
 
   return (
     <div className="space-y-3">
@@ -137,15 +154,13 @@ export default function CacheLoader({ onCacheLoaded, onError }: CacheLoaderProps
               <div className="bg-zinc-950 rounded-lg p-3">
                 <p className="text-xs text-zinc-500 mb-1">Actualizado</p>
                 <p className="text-sm font-mono text-zinc-200">
-                  {cacheInfo.lastUpdated
-                    ? new Date(cacheInfo.lastUpdated).toLocaleString()
-                    : "Nunca"}
+                  {lastUpdatedLabel}
                 </p>
               </div>
             </div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-zinc-500">
-                Se recarga solo cuando pasan 24 horas.
+                Se recarga solo cuando pasan {CACHE_EXPIRY_HOURS} horas.
               </p>
               <button
                 onClick={handleClearCache}
