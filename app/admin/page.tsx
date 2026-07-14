@@ -60,6 +60,7 @@ interface Adjustment {
 interface ProductSnapshot {
   reference?: string;
   name?: string;
+  description?: string;
   barcode?: string;
   quantity?: number;
   cost?: number;
@@ -79,7 +80,7 @@ type AdminView =
   | "exports";
 type SortKey = "created_at" | "employee" | "reference" | "difference";
 type MaterialStockFilter = "all" | "available" | "low" | "out";
-type LabelSize = "62x29" | "62x32";
+type LabelSize = "62x29" | "62x32" | "62x42";
 type LabelMode = "article-code" | "reference-code" | "code";
 
 interface MaterialFormState {
@@ -160,9 +161,9 @@ const PRODUCT_CREATED_PREFIX = "[PRODUCTO NUEVO] ";
 const EMPLOYEE_PREFIX_PATTERN = /^\[EMPLEADO: ([^\]]+)\]\s*/;
 const PRODUCT_BARCODE_SUFFIX_PATTERN = /\s*\[CODIGO: ([^\]]+)\]\s*$/;
 const PRODUCT_SNAPSHOT_SUFFIX_PATTERN = /\s*\[FICHA: ([^\]]+)\]\s*$/;
-const LABEL_SETTINGS_KEY = "cazapiezas_label_settings";
+const LABEL_SETTINGS_KEY = "cazapiezas_label_settings_v2";
 const DEFAULT_LABEL_SETTINGS: LabelSettings = {
-  size: "62x29",
+  size: "62x42",
   mode: "article-code",
   articleFontSize: 11,
   showReference: false,
@@ -261,8 +262,8 @@ function buildEan13Svg(barcode: string) {
     )
     .join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="50" viewBox="0 0 190 50" role="img" aria-label="${barcode}">
-    <rect width="190" height="50" fill="#fff" />
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="234" height="50" viewBox="-22 0 234 50" role="img" aria-label="${barcode}">
+    <rect x="-22" width="234" height="50" fill="#fff" />
     <g transform="translate(0 1)">${bars}</g>
     <text x="95" y="48" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" letter-spacing="2">${barcode}</text>
   </svg>`;
@@ -763,6 +764,7 @@ export default function AdminPanel() {
       .map(Number);
     const showArticle = labelSettings.mode !== "code";
     const barcodeHeight = showArticle ? labelHeight - 13 : labelHeight - 6;
+    const isProductLabel = labelSettings.size === "62x42";
     const labels = items
       .filter((item) => item.barcode)
       .map((item) => {
@@ -773,6 +775,42 @@ export default function AdminPanel() {
           labelSettings.showReference && labelSettings.mode === "article-code"
             ? `${item.reference} - ${primaryText}`
             : primaryText;
+
+        if (isProductLabel) {
+          const snapshot = item.product_snapshot;
+          const pvp = Number(snapshot?.pvp);
+          const taxRate = Number(snapshot?.tax_rate);
+          const hasPrice = Number.isFinite(pvp);
+          const priceWithTax = hasPrice
+            ? pvp * (1 + (Number.isFinite(taxRate) ? taxRate : 0) / 100)
+            : undefined;
+          const formattedPrice = priceWithTax?.toLocaleString("es-ES", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          const description = snapshot?.description || "";
+
+          return `<div class="label product-label">
+    <header class="label-header">
+      <div class="identity">
+        <div class="brand">
+          <span class="brand-mark"><img src="${window.location.origin}/logo.png" alt="" /></span>
+          <strong>CAZAPIEZAS</strong>
+        </div>
+        <div class="reference"><span>REF:</span><strong>${escapeHtml(item.reference)}</strong></div>
+      </div>
+      <div class="price${formattedPrice ? "" : " price-empty"}">
+        <small>PVP</small>
+        <strong>${formattedPrice ? `${escapeHtml(formattedPrice)} €` : "—"}</strong>
+        <small>IVA incl.</small>
+      </div>
+    </header>
+    <div class="divider"></div>
+    <div class="product-name">${escapeHtml(getDisplayName(item))}</div>
+    <div class="description">${description ? escapeHtml(description) : "&nbsp;"}</div>
+    <div class="barcode">${buildEan13Svg(barcode)}</div>
+  </div>`;
+        }
 
         return `<div class="label">
     ${
@@ -792,7 +830,7 @@ export default function AdminPanel() {
   <title>Etiquetas Cazapiezas</title>
   <style>
     @page { size: ${labelWidth}mm ${labelHeight}mm; margin: 0; }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { width: ${labelWidth}mm; height: ${labelHeight}mm; margin: 0; overflow: hidden; background: #fff; }
     body { font-family: Arial, sans-serif; color: #000; }
     .label {
@@ -811,6 +849,32 @@ export default function AdminPanel() {
       padding: 3mm 2mm 1.2mm;
     }
     .label:last-child { page-break-after: auto; }
+    .product-label {
+      display: grid;
+      grid-template-rows: 13mm 1mm 5.5mm 4.5mm 12mm;
+      align-items: stretch;
+      gap: 0;
+      padding: 3mm 1.5mm;
+      text-align: left;
+    }
+    .label-header { display: flex; align-items: stretch; justify-content: space-between; gap: 2mm; }
+    .identity { min-width: 0; flex: 1; display: grid; grid-template-rows: 9mm 4mm; }
+    .brand { min-width: 0; display: flex; align-items: center; gap: 0.8mm; overflow: hidden; }
+    .brand-mark { width: 10mm; height: 9mm; flex: 0 0 auto; overflow: hidden; }
+    .brand-mark img { width: 10.5mm; height: 10.5mm; object-fit: contain; transform: translate(-0.25mm, -0.35mm) scale(1.08); transform-origin: top center; }
+    .brand > strong { font-size: 10px; font-weight: 900; letter-spacing: -0.45px; white-space: nowrap; }
+    .price { width: 23.5mm; flex: 0 0 auto; border: 0.4mm solid #000; border-radius: 1mm; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+    .price small { width: 100%; height: 3mm; display: flex; align-items: center; justify-content: center; background: #000; color: #fff; text-align: center; font-size: 6px; font-weight: 800; line-height: 1; }
+    .price strong { width: 100%; height: 7mm; display: flex; align-items: center; justify-content: center; font-size: 17px; line-height: 1; letter-spacing: -0.55px; white-space: nowrap; }
+    .price-empty strong { font-size: 12px; }
+    .reference { display: flex; align-items: center; gap: 1.2mm; overflow: hidden; }
+    .reference span { width: 8mm; padding: 0.65mm 1mm; background: #000; color: #fff; font-size: 6.5px; font-weight: 800; letter-spacing: 0.4px; }
+    .reference strong { overflow: hidden; font-family: "Arial Narrow", Arial, sans-serif; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; white-space: nowrap; text-overflow: ellipsis; }
+    .divider { align-self: center; justify-self: center; width: 50mm; border-top: 0.35mm solid #000; }
+    .product-name { align-self: end; overflow: hidden; font-size: 10px; line-height: 1.08; font-weight: 800; text-align: center; text-transform: uppercase; white-space: nowrap; text-overflow: ellipsis; }
+    .description { align-self: center; overflow: hidden; color: #111; font-size: 7px; line-height: 1.1; text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+    .barcode { display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+    .product-label .barcode svg { width: 55mm; height: 12mm; }
     .article {
       width: ${labelWidth - 4}mm;
       height: ${showArticle ? 7 : 0}mm;
@@ -898,6 +962,14 @@ export default function AdminPanel() {
           status: "completed",
           created_at: new Date().toISOString(),
           barcode,
+          product_snapshot: {
+            reference: material.reference,
+            name: material.name || material.reference,
+            description: material.description,
+            barcode,
+            pvp: Number(material.pvp),
+            tax_rate: Number(material.tax_rate ?? material.iva ?? 0),
+          },
         },
       ])
     );
@@ -2885,6 +2957,7 @@ function LabelSettingsPanel({
           >
             <option value="62x29">62 x 29 mm</option>
             <option value="62x32">62 x 32 mm</option>
+            <option value="62x42">62 x 42 mm · nueva</option>
           </select>
         </label>
 

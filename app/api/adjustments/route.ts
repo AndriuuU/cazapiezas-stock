@@ -21,6 +21,7 @@ interface StockAdjustment {
 interface ProductSnapshot {
   reference?: string;
   name?: string;
+  description?: string;
   barcode?: string;
   quantity?: number;
   cost?: number;

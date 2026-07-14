@@ -48,6 +48,7 @@ const materialMovementsRequests = new Map<
 interface ProductSnapshot {
   reference: string;
   name: string;
+  description?: string;
   barcode: string;
   quantity: number;
   cost?: number;
@@ -712,6 +713,7 @@ export async function POST(request: Request) {
       const snapshot: ProductSnapshot = {
         reference: createdMaterial.reference || reference,
         name: createdMaterial.name || createdMaterial.description || description,
+        description: createdMaterial.description || description,
         barcode: createdBarcode,
         quantity: Number(createdMaterial.quantity ?? payload.quantity),
         cost: payload.cost,
