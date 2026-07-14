@@ -117,12 +117,21 @@ TALLERGP_TOKEN=tu_token_de_tallergp
 
 SUPABASE_URL=https://tu-proyecto.supabase.co
 SUPABASE_ANON_KEY=tu_anon_key
+
+CAZAPIEZAS_LOGIN_PASSWORD=una_clave_larga_para_el_taller
+CAZAPIEZAS_SESSION_SECRET=otra_clave_larga_aleatoria
+
+# Opcional: limita el acceso a una o varias IPs publicas separadas por coma.
+# CAZAPIEZAS_ALLOWED_IPS=80.25.10.123,80.25.10.124
 ```
 
 > **⚠️ Importante**
 > - `TALLERGP_URL` y `TALLERGP_TOKEN` deben ser variables de servidor.
 > - También se soportan `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` como respaldo.
 > - **No** uses `NEXT_PUBLIC_TALLERGP_TOKEN`: expondría el token en el navegador.
+> - `CAZAPIEZAS_LOGIN_PASSWORD` es la clave que usaran los companeros para entrar.
+> - `CAZAPIEZAS_SESSION_SECRET` firma la sesion guardada en cookie. Si la cambias, todos tendran que iniciar sesion otra vez.
+> - `CAZAPIEZAS_ALLOWED_IPS` es opcional. Si la activas, solo esas IPs podran usar la app.
 
 ---
 

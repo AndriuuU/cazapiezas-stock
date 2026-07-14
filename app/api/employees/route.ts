@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseRestConfig } from "@/lib/supabase";
 
 const EMPLOYEES_REFERENCE = "__EMPLOYEES__";
@@ -27,7 +28,17 @@ function getSupabaseHeaders(anonKey: string) {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "employees:get",
+    limit: 60,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const { url, anonKey } = getSupabaseRestConfig();
     const response = await fetch(
@@ -54,6 +65,16 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const guard = await protectApiRequest(request, {
+    keyPrefix: "employees:write",
+    limit: 15,
+    windowMs: 60 * 1000,
+  });
+
+  if (guard) {
+    return guard;
+  }
+
   try {
     const body = await request.json();
     const employees = normalizeEmployees(body.employees);
