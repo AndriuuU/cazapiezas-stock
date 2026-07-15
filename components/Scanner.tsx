@@ -10,6 +10,10 @@ import { AlertCircle, Camera, Loader2 } from "lucide-react";
 interface ScannerProps {
   onScan: (code: string) => void;
   onError?: (error: string) => void;
+  concealResult?: boolean;
+  stopAfterScan?: boolean;
+  idleMessage?: string;
+  activeMessage?: string;
 }
 
 type CameraStatus = "idle" | "loading" | "granted" | "denied";
@@ -32,7 +36,14 @@ function getCameraErrorMessage(error: unknown) {
   return "No se puede acceder a la cámara. Verifica los permisos en tu navegador.";
 }
 
-export default function Scanner({ onScan, onError }: ScannerProps) {
+export default function Scanner({
+  onScan,
+  onError,
+  concealResult = false,
+  stopAfterScan = false,
+  idleMessage = "Pulsa iniciar escaneo para activar la cámara.",
+  activeMessage = "Escaneo activo - Apunta el código de barras a la cámara",
+}: ScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -151,6 +162,15 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
               navigator.vibrate?.([90, 40, 90]);
               playBeep();
               onScan(scannedCode);
+
+              if (stopAfterScan) {
+                controlsRef.current?.stop();
+                controlsRef.current = null;
+                streamRef.current?.getTracks().forEach((track) => track.stop());
+                streamRef.current = null;
+                setIsScanning(false);
+                setCameraStatus("idle");
+              }
             }
           }
         );
@@ -166,7 +186,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
       setError(message);
       onError?.(message);
     }
-  }, [onError, onScan, playBeep, stopCamera]);
+  }, [onError, onScan, playBeep, stopAfterScan, stopCamera]);
 
   const handleToggleScanner = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -190,9 +210,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
           <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
             <div className="text-center px-6">
               <Camera className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
-              <p className="text-zinc-400 text-sm">
-                Pulsa iniciar escaneo para activar la cámara.
-              </p>
+              <p className="text-zinc-400 text-sm">{idleMessage}</p>
             </div>
           </div>
         )}
@@ -226,7 +244,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
           </div>
         )}
 
-        {lastScannedCode && (
+        {lastScannedCode && !concealResult && (
           <div className="absolute top-4 left-4 right-4 bg-black/70 backdrop-blur text-red-300 px-3 py-2 rounded-lg text-sm font-mono">
             {lastScannedCode}
           </div>
@@ -264,7 +282,7 @@ export default function Scanner({ onScan, onError }: ScannerProps) {
       <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3">
         <p className="text-xs text-zinc-400">
           {isScanning
-            ? "Escaneo activo - Apunta el código de barras a la cámara"
+            ? activeMessage
             : "Escaneo inactivo - Presiona el botón para comenzar"}
         </p>
       </div>
