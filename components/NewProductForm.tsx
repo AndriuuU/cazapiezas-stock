@@ -272,7 +272,7 @@ export default function NewProductForm({
 
             <label className="space-y-2">
               <span className="text-sm font-medium text-zinc-300">
-                Alerta stock
+                Stock mínimo
               </span>
               <input
                 type="number"
@@ -283,6 +283,9 @@ export default function NewProductForm({
                 }
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-red-500"
               />
+              <span className="block text-xs text-zinc-500">
+                Usa 0 para «No reponer / Sin alerta».
+              </span>
             </label>
 
             <label className="space-y-2">

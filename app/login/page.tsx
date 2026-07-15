@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useCallback, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Keyboard,
@@ -12,7 +12,6 @@ import Logo from "@/components/Logo";
 import Scanner from "@/components/Scanner";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,8 +42,8 @@ function LoginForm() {
           throw new Error(data.error || "No se pudo iniciar sesión.");
         }
 
-        router.replace(nextPath.startsWith("/") ? nextPath : "/");
-        router.refresh();
+        const destination = nextPath.startsWith("/") ? nextPath : "/";
+        window.location.replace(destination);
       } catch (loginError) {
         setError(
           loginError instanceof Error ? loginError.message : "Error desconocido"
@@ -53,7 +52,7 @@ function LoginForm() {
         setLoading(false);
       }
     },
-    [loading, nextPath, router]
+    [loading, nextPath]
   );
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {

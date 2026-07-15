@@ -35,6 +35,11 @@ import {
 import Logo from "@/components/Logo";
 import { createInternalEan13 } from "@/lib/barcodes";
 import {
+  getStockAlertStatus,
+  getStockMinimum,
+  isLowStock,
+} from "@/lib/stock-alerts";
+import {
   getAllMaterialsFromCache,
   loadAllMaterials,
   updateMaterialInCache,
@@ -79,7 +84,7 @@ type AdminView =
   | "employees"
   | "exports";
 type SortKey = "created_at" | "employee" | "reference" | "difference";
-type MaterialStockFilter = "all" | "available" | "low" | "out";
+type MaterialStockFilter = "all" | "available" | "low" | "out" | "disabled";
 type LabelSize = "62x29" | "62x32" | "62x42";
 type LabelMode = "article-code" | "reference-code" | "code";
 
@@ -509,6 +514,8 @@ function ActivityTable({
 export default function AdminPanel() {
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [lowStockMaterials, setLowStockMaterials] = useState<Material[]>([]);
+  const [ignoringStockId, setIgnoringStockId] = useState("");
+  const [stockAlertError, setStockAlertError] = useState("");
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<AdminView>("dashboard");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
@@ -626,12 +633,9 @@ export default function AdminPanel() {
 
   const updateLowStockMaterials = useCallback((materials: Material[]) => {
     const lowStock = materials
-      .filter((material) => {
-        const threshold = Number(material.alert_threshold ?? 2);
-        return Number(material.quantity ?? 0) <= threshold;
-      })
+      .filter(isLowStock)
       .sort((a, b) => Number(a.quantity ?? 0) - Number(b.quantity ?? 0))
-      .slice(0, 12);
+      .slice(0, 6);
 
     setLowStockMaterials(lowStock);
   }, []);
@@ -645,6 +649,33 @@ export default function AdminPanel() {
       updateLowStockMaterials(getAllMaterialsFromCache());
     }
   }, [updateLowStockMaterials]);
+
+  const ignoreStockAlert = useCallback(async (material: Material) => {
+    setIgnoringStockId(material.material_id);
+    setStockAlertError("");
+
+    try {
+      const response = await axios.put("/api/materials", {
+        material_id: material.material_id,
+        alert_threshold: 0,
+      });
+      const updatedMaterial = response.data.material as Material;
+
+      updateMaterialInCache(updatedMaterial);
+      setLowStockMaterials((current) =>
+        current.filter((item) => item.material_id !== material.material_id)
+      );
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.error || error.message
+        : error instanceof Error
+          ? error.message
+          : "Error desconocido";
+      setStockAlertError(`No se pudo ignorar la alerta: ${message}`);
+    } finally {
+      setIgnoringStockId("");
+    }
+  }, []);
 
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
@@ -1303,7 +1334,7 @@ export default function AdminPanel() {
               </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
+            <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.4fr]">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
@@ -1319,21 +1350,50 @@ export default function AdminPanel() {
                     No hay alertas o el catálogo local no está cargado.
                   </p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
+                    {stockAlertError && (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                        {stockAlertError}
+                      </div>
+                    )}
                     {lowStockMaterials.map((material) => (
                       <div
                         key={material.material_id}
-                        className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 p-3"
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5"
                       >
-                        <div>
-                          <p className="font-mono text-sm font-bold text-cyan-400">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-xs font-bold text-cyan-400">
                             {material.reference}
                           </p>
-                          <p className="text-sm text-white line-clamp-1">{material.name}</p>
+                          <p className="truncate text-sm font-medium text-white">{material.name}</p>
+                          <p className="text-xs text-zinc-500">
+                            Mínimo {getStockMinimum(material)}
+                          </p>
                         </div>
-                        <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-sm font-bold text-red-400">
-                          {material.quantity} u
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${
+                              Number(material.quantity ?? 0) <= 0
+                                ? "border-red-500/20 bg-red-500/10 text-red-400"
+                                : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+                            }`}
+                          >
+                            {material.quantity} u
+                          </span>
+                          <p className="sr-only">
+                            {Number(material.quantity ?? 0) <= 0 ? "Agotado" : "Stock bajo"}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void ignoreStockAlert(material)}
+                            disabled={ignoringStockId === material.material_id}
+                            className="whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {ignoringStockId === material.material_id
+                              ? "Guardando..."
+                              : "No reponer"}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1702,7 +1762,7 @@ function MaterialsAdminPanel({
 
     return allMaterials.filter((material) => {
       const quantity = Number(material.quantity ?? 0);
-      const threshold = Number(material.alert_threshold ?? 2);
+      const alertStatus = getStockAlertStatus(material);
       const searchText = [
         material.reference,
         material.name,
@@ -1719,11 +1779,13 @@ function MaterialsAdminPanel({
         : true;
       const matchesStock =
         stockFilter === "out"
-          ? quantity <= 0
+          ? alertStatus === "out"
           : stockFilter === "low"
-            ? quantity > 0 && quantity <= threshold
+            ? alertStatus === "low" || alertStatus === "out"
+            : stockFilter === "disabled"
+              ? alertStatus === "disabled"
             : stockFilter === "available"
-              ? quantity > 0
+              ? alertStatus === "ok"
               : true;
       const matchesMin = minStockValue === undefined || quantity >= minStockValue;
       const matchesMax = maxStockValue === undefined || quantity <= maxStockValue;
@@ -1853,6 +1915,7 @@ function MaterialsAdminPanel({
               <option value="available">Con stock</option>
               <option value="low">Stock bajo</option>
               <option value="out">Sin stock</option>
+              <option value="disabled">No reponer / Sin alerta</option>
             </select>
           </label>
 
@@ -2007,16 +2070,22 @@ function MaterialsAdminPanel({
                       <td className="p-4 text-center">
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            Number(material.quantity ?? 0) <= 0
+                            getStockAlertStatus(material) === "disabled"
+                              ? "bg-zinc-700/50 text-zinc-300"
+                              : getStockAlertStatus(material) === "out"
                               ? "bg-red-500/10 text-red-300"
-                              : Number(material.quantity ?? 0) <=
-                                  Number(material.alert_threshold ?? 2)
+                              : getStockAlertStatus(material) === "low"
                                 ? "bg-amber-500/10 text-amber-300"
                                 : "bg-emerald-500/10 text-emerald-300"
                           }`}
                         >
                           {Number(material.quantity ?? 0)} u
                         </span>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {getStockAlertStatus(material) === "disabled"
+                            ? "No reponer"
+                            : `Mínimo ${getStockMinimum(material)}`}
+                        </p>
                       </td>
                       <td className="p-4 text-right font-semibold text-zinc-200">
                         {formatMoney(material.pvp)}
@@ -2691,7 +2760,7 @@ function MaterialEditorModal({
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm font-medium text-zinc-300">Alerta stock</span>
+            <span className="text-sm font-medium text-zinc-300">Stock mínimo</span>
             <input
               type="number"
               min="0"
@@ -2699,6 +2768,9 @@ function MaterialEditorModal({
               onChange={(event) => updateField("alert_threshold", event.target.value)}
               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white focus:outline-none focus:border-red-500"
             />
+            <span className="block text-xs text-zinc-500">
+              Usa 0 para marcar «No reponer / Sin alerta».
+            </span>
           </label>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 md:col-span-2">
