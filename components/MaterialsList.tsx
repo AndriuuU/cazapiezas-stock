@@ -1,23 +1,37 @@
 "use client";
 
 import { Material } from "@/types/material";
-import { X, Package, DollarSign, Filter } from "lucide-react";
+import { X, Package, DollarSign, Download, Filter } from "lucide-react";
 import { useState } from "react";
+import {
+  getStockAlertStatus,
+  getStockMinimum,
+} from "@/lib/stock-alerts";
 
 interface MaterialsListProps {
   materials: Material[];
   onSelectMaterial: (material: Material) => void;
   onClose: () => void;
+  initialStockFilter?: "all" | "alerts";
+  onIgnoreStockAlert?: (material: Material) => Promise<void>;
+  onExportStockAlerts?: () => void;
 }
 
 export default function MaterialsList({
   materials,
   onSelectMaterial,
   onClose,
+  initialStockFilter = "all",
+  onIgnoreStockAlert,
+  onExportStockAlerts,
 }: MaterialsListProps) {
   // Los estados siempre deben ir dentro de la función del componente
   const [searchTerm, setSearchTerm] = useState("");
-  const [stockFilter, setStockFilter] = useState("all"); // "all", "zero", "low", "available"
+  const [stockFilter, setStockFilter] = useState<
+    "all" | "alerts" | "available" | "disabled"
+  >(initialStockFilter);
+  const [ignoringMaterialId, setIgnoringMaterialId] = useState("");
+  const [actionError, setActionError] = useState("");
 
   // Filtrado combinado: Texto + Cantidad
   const filteredMaterials = materials.filter((material) => {
@@ -30,17 +44,22 @@ export default function MaterialsList({
 
     // 2. Filtro por nivel de stock
     let matchesStock = true;
-    if (stockFilter === "zero") {
-      matchesStock = material.quantity === 0;
-    } else if (stockFilter === "low") {
-      matchesStock = material.quantity > 0 && material.quantity <= 5;
+    const alertStatus = getStockAlertStatus(material);
+    if (stockFilter === "alerts") {
+      matchesStock = alertStatus === "out" || alertStatus === "low";
+    } else if (stockFilter === "disabled") {
+      matchesStock = alertStatus === "disabled";
     } else if (stockFilter === "available") {
-      matchesStock = material.quantity > 5;
+      matchesStock = alertStatus === "ok";
     }
 
     // Debe cumplir ambas condiciones para aparecer en la lista
     return matchesText && matchesStock;
-  });
+  }).sort(
+    (a, b) =>
+      Number(a.quantity ?? 0) - Number(b.quantity ?? 0) ||
+      String(a.reference || "").localeCompare(String(b.reference || ""))
+  );
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end md:items-center md:justify-center p-4">
@@ -94,43 +113,66 @@ export default function MaterialsList({
                 stockFilter === "available" ? "bg-green-500/20 text-green-400 border border-green-500/30" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
-              Disponibles (+5)
+              Stock correcto
             </button>
             <button
-              onClick={() => setStockFilter("low")}
+              onClick={() => setStockFilter("alerts")}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                stockFilter === "low" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
+                stockFilter === "alerts" ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
-              Stock Bajo (1-5)
+              Alertas
             </button>
             <button
-              onClick={() => setStockFilter("zero")}
+              onClick={() => setStockFilter("disabled")}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                stockFilter === "zero" ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
+                stockFilter === "disabled" ? "bg-zinc-600/30 text-zinc-300 border border-zinc-500/30" : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800"
               }`}
             >
-              Sin Stock (0)
+              No reponer
             </button>
           </div>
+
+          {stockFilter === "alerts" && onExportStockAlerts && (
+            <button
+              type="button"
+              onClick={onExportStockAlerts}
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+            >
+              <Download size={16} />
+              Exportar pedido de reposición
+            </button>
+          )}
+          {actionError && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">
+              {actionError}
+            </p>
+          )}
         </div>
 
         {/* Lista de materiales (Scrolleable) */}
         <div className="overflow-y-auto flex-1 divide-y divide-zinc-700/50 min-h-[300px]">
           {filteredMaterials.length > 0 ? (
             filteredMaterials.map((material) => (
-              <button
+              <div
                 key={material.material_id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onSelectMaterial(material)}
-                className="w-full text-left px-4 py-4 hover:bg-zinc-800/50 transition-colors active:bg-red-500/10 group"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    onSelectMaterial(material);
+                  }
+                }}
+                className="group w-full px-4 py-3 text-left transition-colors hover:bg-zinc-800/50 active:bg-red-500/10"
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-center gap-3">
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-white text-sm line-clamp-2 group-hover:text-red-400 transition-colors">
+                    <h3 className="truncate text-sm font-semibold text-white transition-colors group-hover:text-red-400">
                       {material.name}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1.5 text-xs text-zinc-400">
+                    <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
                       <span className="font-mono bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
                         {material.reference}
                       </span>
@@ -143,27 +185,63 @@ export default function MaterialsList({
                   </div>
 
                   {/* Price and Stock */}
-                  <div className="text-right flex-shrink-0 flex flex-col items-end justify-center">
+                  <div className="flex flex-shrink-0 items-center justify-end gap-2 text-right">
                     <div
                       className={`text-sm font-bold px-2 py-1 rounded-md ${
-                        material.quantity === 0
+                        getStockAlertStatus(material) === "disabled"
+                          ? "bg-zinc-700/50 text-zinc-300"
+                          : getStockAlertStatus(material) === "out"
                           ? "bg-red-500/10 text-red-400"
-                          : material.quantity <= 5
+                          : getStockAlertStatus(material) === "low"
                             ? "bg-yellow-500/10 text-yellow-400"
                             : "bg-green-500/10 text-green-400"
                       }`}
                     >
                       {material.quantity} und.
                     </div>
+                    <span className="hidden whitespace-nowrap text-[11px] text-zinc-500 sm:inline">
+                      {getStockAlertStatus(material) === "disabled"
+                        ? "No reponer"
+                        : ""}
+                    </span>
+                    {(getStockAlertStatus(material) === "out" ||
+                      getStockAlertStatus(material) === "low") &&
+                      onIgnoreStockAlert && (
+                        <button
+                          type="button"
+                          onClick={async (event) => {
+                            event.stopPropagation();
+                            setIgnoringMaterialId(material.material_id);
+                            setActionError("");
+                            try {
+                              await onIgnoreStockAlert(material);
+                            } catch (error) {
+                              setActionError(
+                                error instanceof Error
+                                  ? error.message
+                                  : "No se pudo ignorar la alerta."
+                              );
+                            } finally {
+                              setIgnoringMaterialId("");
+                            }
+                          }}
+                          disabled={ignoringMaterialId === material.material_id}
+                          className="whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+                        >
+                          {ignoringMaterialId === material.material_id
+                            ? "Guardando..."
+                            : "No reponer"}
+                        </button>
+                      )}
                     {material.pvp !== undefined && (
-                      <div className="flex items-center gap-0.5 text-zinc-500 font-medium text-xs mt-1.5">
+                      <div className="hidden items-center gap-0.5 text-xs font-medium text-zinc-500 md:flex">
                         <DollarSign size={12} />
                         {material.pvp.toFixed(2)}
                       </div>
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
             ))
           ) : (
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">

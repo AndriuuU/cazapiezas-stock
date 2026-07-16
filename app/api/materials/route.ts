@@ -491,7 +491,7 @@ export async function GET(request: Request) {
         stock === "out"
           ? quantity <= 0
           : stock === "low"
-            ? quantity > 0 && quantity <= threshold
+            ? threshold > 0 && quantity <= threshold
             : stock === "available"
               ? quantity > 0
               : true;

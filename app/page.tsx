@@ -2,16 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { AlertCircle, CheckCircle, List, Loader2, PackagePlus, Search } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle, List, Loader2, PackagePlus, Search } from "lucide-react";
 import CacheLoader from "@/components/CacheLoader";
 import Logo from "@/components/Logo";
 import MaterialsList from "@/components/MaterialsList";
 import NewProductForm from "@/components/NewProductForm";
 import ProductCard from "@/components/ProductCard";
 import Scanner from "@/components/Scanner";
-import { getAllMaterialsFromCache, getCacheInfo } from "@/services/cache";
+import {
+  getAllMaterialsFromCache,
+  getCacheInfo,
+  updateMaterialInCache,
+} from "@/services/cache";
 import { searchByBarcode, searchByReference, searchMaterial } from "@/services/search";
 import { Material } from "@/types/material";
+import { getStockMinimum, isLowStock } from "@/lib/stock-alerts";
 
 export default function Home() {
   const [scannedCode, setScannedCode] = useState("");
@@ -26,6 +31,8 @@ export default function Home() {
   const [showMaterialsList, setShowMaterialsList] = useState(false);
   const [showNewProductForm, setShowNewProductForm] = useState(false);
   const [allMaterials, setAllMaterials] = useState<Material[]>([]);
+  const [lowStockCount, setLowStockCount] = useState(0);
+  const [materialsListFilter, setMaterialsListFilter] = useState<"all" | "alerts">("all");
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -33,17 +40,99 @@ export default function Home() {
 
       setCacheReady(info.itemCount > 0);
       setCacheItemCount(info.itemCount);
+      setLowStockCount(getAllMaterialsFromCache().filter(isLowStock).length);
     });
   }, []);
 
   const handleCacheLoaded = useCallback((count: number) => {
     setCacheReady(true);
     setCacheItemCount(count);
+    setLowStockCount(getAllMaterialsFromCache().filter(isLowStock).length);
   }, []);
 
   const handleOpenMaterialsList = () => {
     setAllMaterials(getAllMaterialsFromCache());
+    setMaterialsListFilter("all");
     setShowMaterialsList(true);
+  };
+
+  const handleOpenStockAlerts = () => {
+    setAllMaterials(getAllMaterialsFromCache());
+    setMaterialsListFilter("alerts");
+    setShowMaterialsList(true);
+  };
+
+  const handleIgnoreStockAlert = async (material: Material) => {
+    setError("");
+
+    try {
+      const response = await axios.put("/api/materials", {
+        material_id: material.material_id,
+        alert_threshold: 0,
+      });
+      const updatedMaterial: Material = {
+        ...material,
+        ...response.data.material,
+        alert_threshold: 0,
+      };
+
+      updateMaterialInCache(updatedMaterial);
+      setAllMaterials((current) =>
+        current.map((item) =>
+          item.material_id === material.material_id ? updatedMaterial : item
+        )
+      );
+      setLowStockCount((current) => Math.max(0, current - 1));
+    } catch (ignoreError) {
+      const message = axios.isAxiosError(ignoreError)
+        ? ignoreError.response?.data?.error || ignoreError.message
+        : ignoreError instanceof Error
+          ? ignoreError.message
+          : "Error desconocido";
+      setError(`No se pudo marcar «No reponer»: ${message}`);
+      throw new Error(message);
+    }
+  };
+
+  const handleExportStockAlerts = () => {
+    const alerts = getAllMaterialsFromCache()
+      .filter(isLowStock)
+      .sort((a, b) => String(a.reference || "").localeCompare(String(b.reference || "")));
+
+    if (alerts.length === 0) {
+      setError("No hay materiales con alerta de stock para exportar.");
+      return;
+    }
+
+    const escapeCsv = (value: unknown) =>
+      `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = alerts.map((material) => {
+      const quantity = Number(material.quantity ?? 0);
+      const minimum = getStockMinimum(material);
+      const orderQuantity = Math.max(1, Math.ceil(minimum + 1 - quantity));
+
+      return [
+        material.reference,
+        material.name || material.description || "",
+        quantity,
+        minimum,
+        orderQuantity,
+        material.unit || "ud.",
+      ].map(escapeCsv).join(";");
+    });
+    const csv = [
+      ["Referencia", "Material", "Stock actual", "Stock mínimo", "Cantidad a pedir", "Unidad"]
+        .map(escapeCsv)
+        .join(";"),
+      ...rows,
+    ].join("\r\n");
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pedido-stock-bajo-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSearch = useCallback(
@@ -228,6 +317,24 @@ export default function Home() {
             </div>
 
             <div className="grid gap-3 mb-8 md:grid-cols-2">
+              {lowStockCount > 0 && (
+                <button
+                  onClick={handleOpenStockAlerts}
+                  className="min-h-14 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-left transition-all hover:bg-amber-500/15 active:scale-95 md:col-span-2"
+                >
+                  <span className="flex items-center gap-3">
+                    <BellRing className="h-6 w-6 text-amber-400" />
+                    <span>
+                      <span className="block font-bold text-amber-300">
+                        {lowStockCount} {lowStockCount === 1 ? "alerta" : "alertas"} de stock
+                      </span>
+                      <span className="text-sm text-amber-200/70">
+                        Ver materiales que hay que reponer
+                      </span>
+                    </span>
+                  </span>
+                </button>
+              )}
               <button
                 onClick={handleOpenMaterialsList}
                 className="w-full min-h-14 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 text-zinc-300 hover:text-white font-semibold transition-all active:scale-95 group"
@@ -282,6 +389,9 @@ export default function Home() {
         {showMaterialsList && (
           <MaterialsList
             materials={allMaterials}
+            initialStockFilter={materialsListFilter}
+            onIgnoreStockAlert={handleIgnoreStockAlert}
+            onExportStockAlerts={handleExportStockAlerts}
             onClose={() => setShowMaterialsList(false)}
             onSelectMaterial={(material) => {
               setSelectedMaterial(material);
