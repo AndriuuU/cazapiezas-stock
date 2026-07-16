@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { AlertCircle, BellRing, CheckCircle, List, Loader2, PackagePlus, Search } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle, List, Loader2, PackagePlus, Search, Warehouse } from "lucide-react";
+import Link from "next/link";
 import CacheLoader from "@/components/CacheLoader";
 import Logo from "@/components/Logo";
 import MaterialsList from "@/components/MaterialsList";
@@ -349,6 +350,13 @@ export default function Home() {
                 <PackagePlus className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
                 Registrar producto
               </button>
+              <Link
+                href="/almacen-desguace"
+                className="w-full min-h-14 py-4 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 rounded-2xl flex items-center justify-center gap-2 text-amber-300 font-semibold transition-all active:scale-95 md:col-span-2"
+              >
+                <Warehouse className="w-5 h-5" />
+                Almacén Desguace
+              </Link>
             </div>
           </>
         )}

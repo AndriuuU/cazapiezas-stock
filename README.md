@@ -105,6 +105,19 @@ Incluye:
 - Acceso a la API de TallerGP.
 - Proyecto Supabase o endpoint REST compatible para movimientos, empleados y eventos internos.
 
+### Módulo Almacén Desguace
+
+El módulo independiente vive en `/almacen-desguace` y utiliza exclusivamente las tablas
+`almacen_desguace_piezas` y `almacen_desguace_fotos`. Antes de usarlo, ejecuta en el editor
+SQL de Supabase la migración:
+
+`supabase/migrations/202607160001_almacen_desguace.sql`
+
+La migración también crea el bucket privado `almacen-desguace`, la numeración automática
+`CZP-DESGUACE-000001` y las restricciones de ubicación y estados. En servidor se puede
+configurar opcionalmente `SUPABASE_SERVICE_ROLE_KEY`; si no existe, se mantiene el mismo
+método de acceso con la clave anon que ya utiliza la aplicación.
+
 ---
 
 ## 🔐 Variables de Entorno

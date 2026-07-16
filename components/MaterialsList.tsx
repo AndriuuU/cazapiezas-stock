@@ -5,7 +5,6 @@ import { X, Package, DollarSign, Download, Filter } from "lucide-react";
 import { useState } from "react";
 import {
   getStockAlertStatus,
-  getStockMinimum,
 } from "@/lib/stock-alerts";
 
 interface MaterialsListProps {

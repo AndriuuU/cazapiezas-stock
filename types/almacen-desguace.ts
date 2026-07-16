@@ -1,0 +1,101 @@
+export const ESTADOS_PIEZA = [
+  "Nueva",
+  "Nueva con embalaje abierto",
+  "Segunda mano comprobada",
+  "Segunda mano sin comprobar",
+  "Con defecto",
+  "Pendiente de revisar",
+  "No apta para venta",
+] as const;
+
+export const ESTADOS_PROCESO = [
+  "Pendiente de identificar",
+  "Pendiente de comprobar",
+  "Pendiente de fotografiar",
+  "Lista para publicar",
+  "Publicada",
+  "Reservada",
+  "Vendida",
+  "Pendiente de envío",
+  "Enviada",
+  "Devuelta",
+  "Retirada",
+] as const;
+
+export type EstadoPieza = (typeof ESTADOS_PIEZA)[number];
+export type EstadoProceso = (typeof ESTADOS_PROCESO)[number];
+
+export interface FotoDesguace {
+  id: number;
+  pieza_id: number;
+  url_imagen: string;
+  url_publica?: string;
+  url_firmada?: string;
+  url_visualizacion?: string;
+  es_principal: boolean;
+  orden: number;
+}
+
+export interface EstanteriaDesguace {
+  id: number;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  categorias: string[];
+  palabras_clave: string[];
+  niveles: number;
+  huecos_por_nivel: number;
+  capacidad_maxima: number;
+  llena_manual: boolean;
+  activa: boolean;
+  created_at: string;
+  updated_at: string;
+  ocupados: number;
+  disponibles: number;
+  porcentaje_ocupacion: number;
+  llena: boolean;
+  motivo_llena: "manual" | "capacidad" | null;
+  siguiente_ubicacion: string | null;
+}
+
+export interface SugerenciaUbicacion {
+  estanteria: EstanteriaDesguace;
+  ubicacion: string;
+  motivos: string[];
+  puntuacion: number;
+}
+
+export interface PiezaDesguace {
+  id: number;
+  codigo_interno: string;
+  nombre_pieza: string | null;
+  descripcion: string | null;
+  categoria: string | null;
+  marca_pieza: string | null;
+  referencia_principal: string | null;
+  referencia_oem: string | null;
+  referencias_equivalentes: string | null;
+  marca_vehiculo: string | null;
+  modelo_vehiculo: string | null;
+  motorizacion: string | null;
+  codigo_motor: string | null;
+  ano_desde: number | null;
+  ano_hasta: number | null;
+  estado_pieza: EstadoPieza | null;
+  cantidad: number | null;
+  precio_coste: number | null;
+  precio_venta: number | null;
+  ubicacion: string | null;
+  procedencia: string | null;
+  estado_proceso: EstadoProceso;
+  publicado_online: boolean;
+  fecha_entrada: string;
+  created_at: string;
+  updated_at: string;
+  fotos?: FotoDesguace[];
+}
+
+export type PiezaDesguaceInput = Partial<Omit<
+  PiezaDesguace,
+  "id" | "codigo_interno" | "created_at" | "updated_at" | "fotos"
+>>;
