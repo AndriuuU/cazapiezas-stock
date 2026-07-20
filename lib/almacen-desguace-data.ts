@@ -4,14 +4,18 @@ import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/
 export async function getPieza(id: string | number) {
   const { url, key } = getSupabaseApiConfig();
   const params = new URLSearchParams({
-    select: "*,fotos:almacen_desguace_fotos(*)",
+    select: "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
     id: `eq.${id}`,
     limit: "1",
   });
-  const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
+  let response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
     headers: supabaseHeaders(key),
     cache: "no-store",
   });
+  if (!response.ok) {
+    params.set("select", "*,fotos:almacen_desguace_fotos(*)");
+    response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, { headers: supabaseHeaders(key), cache: "no-store" });
+  }
   const rows = await parseSupabaseResponse<PiezaDesguace[]>(response);
   return rows[0] || null;
 }

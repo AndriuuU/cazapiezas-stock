@@ -95,6 +95,7 @@ export interface HuecoPlanoAlmacen {
   hueco: number;
   disponible: boolean;
   pieza: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria"> | null;
+  cajon: Pick<CajonDesguace, "id" | "codigo" | "nombre" | "cantidad_piezas" | "capacidad_maxima" | "lleno"> | null;
 }
 
 export interface EstanteriaPlanoAlmacen extends EstanteriaDesguace {
@@ -120,6 +121,7 @@ export interface PiezaDesguace {
   referencias_equivalentes: string | null;
   marca_vehiculo: string | null;
   modelo_vehiculo: string | null;
+  matricula_vehiculo: string | null;
   motorizacion: string | null;
   codigo_motor: string | null;
   ano_desde: number | null;
@@ -129,6 +131,8 @@ export interface PiezaDesguace {
   precio_coste: number | null;
   precio_venta: number | null;
   ubicacion: string | null;
+  cajon_id: number | null;
+  cajon?: Pick<CajonDesguace, "id" | "codigo" | "nombre" | "ubicacion"> | null;
   procedencia: string | null;
   estado_proceso: EstadoProceso;
   publicado_online: boolean;
@@ -140,5 +144,39 @@ export interface PiezaDesguace {
 
 export type PiezaDesguaceInput = Partial<Omit<
   PiezaDesguace,
-  "id" | "codigo_interno" | "created_at" | "updated_at" | "fotos"
+  "id" | "codigo_interno" | "created_at" | "updated_at" | "fotos" | "cajon"
 >>;
+
+export type TipoMovimientoCajon = "creacion" | "entrada" | "salida" | "traslado" | "estado";
+
+export interface MovimientoCajon {
+  id: number;
+  cajon_id: number;
+  pieza_id: number | null;
+  tipo_movimiento: TipoMovimientoCajon;
+  ubicacion_anterior: string | null;
+  ubicacion_final: string | null;
+  detalle: string | null;
+  usuario_nombre: string;
+  created_at: string;
+  pieza?: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza"> | null;
+}
+
+export interface CajonDesguace {
+  id: number;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  ubicacion: string;
+  capacidad_maxima: number;
+  lleno_manual: boolean;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+  cantidad_piezas: number;
+  disponibles: number;
+  porcentaje_ocupacion: number;
+  lleno: boolean;
+  piezas?: PiezaDesguace[];
+  movimientos?: MovimientoCajon[];
+}

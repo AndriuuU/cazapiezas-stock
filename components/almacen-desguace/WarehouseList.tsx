@@ -4,15 +4,15 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, Eye, FilterX,
-  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackageCheck, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
+  Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, Eye, FilterX,
+  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackageCheck, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
   SlidersHorizontal, Tag, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import PlacementModal from "@/components/almacen-desguace/PlacementModal";
 import ConfirmDialog from "@/components/almacen-desguace/ConfirmDialog";
 import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
-import { ESTADOS_PIEZA, ESTADOS_PROCESO, type PiezaDesguace } from "@/types/almacen-desguace";
+import { ESTADOS_PIEZA, ESTADOS_PROCESO, type CajonDesguace, type PiezaDesguace } from "@/types/almacen-desguace";
 
 type Action = "publicar" | "reservar" | "vender" | "enviar" | "retirar";
 type BulkField = "estado_pieza" | "estado_proceso" | "publicado_online";
@@ -63,6 +63,12 @@ export default function WarehouseList() {
   const [confirmation, setConfirmation] = useState<ConfirmRequest | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
+  const [drawerPiece, setDrawerPiece] = useState<PiezaDesguace | null>(null);
+  const [drawerOptions, setDrawerOptions] = useState<CajonDesguace[]>([]);
+  const [drawerQuery, setDrawerQuery] = useState("");
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerSaving, setDrawerSaving] = useState<number | null>(null);
+  const [drawerError, setDrawerError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,6 +157,30 @@ export default function WarehouseList() {
     }
   }
 
+  async function openDrawerPicker(piece: PiezaDesguace) {
+    setDrawerPiece(piece); setDrawerLoading(true); setDrawerError(""); setDrawerQuery("");
+    try {
+      const response = await fetch("/api/almacen-desguace/cajones");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudieron cargar los cajones.");
+      setDrawerOptions((data as CajonDesguace[]).filter((drawer) => drawer.activo && (!drawer.lleno || drawer.id === piece.cajon_id)));
+    } catch (caught) { setDrawerError(caught instanceof Error ? caught.message : "No se pudieron cargar los cajones."); }
+    finally { setDrawerLoading(false); }
+  }
+
+  async function assignDrawer(drawer: CajonDesguace) {
+    if (!drawerPiece || drawer.id === drawerPiece.cajon_id) return;
+    setDrawerSaving(drawer.id); setDrawerError("");
+    try {
+      const response = await fetch(`/api/almacen-desguace/cajones/${drawer.id}/piezas`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "add", pieza_id: drawerPiece.id }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo guardar la pieza en el cajón.");
+      const message = drawerPiece.cajon_id ? `${drawerPiece.codigo_interno} trasladada a ${drawer.codigo}.` : `${drawerPiece.codigo_interno} guardada en ${drawer.codigo}.`;
+      setDrawerPiece(null); setSuccess(message); setExpandedPanel(null); await load();
+    } catch (caught) { setDrawerError(caught instanceof Error ? caught.message : "No se pudo guardar la pieza en el cajón."); }
+    finally { setDrawerSaving(null); }
+  }
+
   function togglePiece(id: number) {
     setSelected((current) => {
       const next = new Set(current);
@@ -226,6 +256,9 @@ export default function WarehouseList() {
             <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} piezas encontradas en Almacén Desguace.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
+              <Archive size={18} /> Cajones
+            </Link>
             <Link href="/almacen-desguace/plano" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
               <MapPinned size={18} /> Plano general
             </Link>
@@ -302,12 +335,12 @@ export default function WarehouseList() {
             <div className="py-16 text-center"><Warehouse className="mx-auto mb-3 text-zinc-700" size={44} /><p className="font-semibold text-zinc-300">No hay piezas con estos filtros.</p><button onClick={clearFilters} className="mt-3 text-sm text-amber-400 hover:text-amber-300">Quitar filtros</button></div>
           ) : <>
             <div className="divide-y divide-zinc-800 lg:hidden">
-              {pieces.map((piece) => <PieceCard key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}
+              {pieces.map((piece) => <PieceCard key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}
             </div>
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[1120px] text-left text-xs">
                 <thead className="bg-zinc-950 uppercase tracking-wide text-zinc-500"><tr><th className="px-3 py-2"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></th>{["Fotos", "Referencia", "Coche", "Precio", "Fecha", "Ubicación", "Estados", "Online", "Acciones"].map((value) => <th key={value} className="px-2 py-2">{value}</th>)}</tr></thead>
-                <tbody className="divide-y divide-zinc-800">{pieces.map((piece) => <PieceRow key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}</tbody>
+                <tbody className="divide-y divide-zinc-800">{pieces.map((piece) => <PieceRow key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}</tbody>
               </table>
             </div>
           </>}
@@ -316,6 +349,7 @@ export default function WarehouseList() {
       </div>
       {locatingPiece && <PlacementModal piece={locatingPiece} onClose={() => setLocatingPiece(null)} onPlaced={(message) => { setSuccess(message); setLocatingPiece(null); void load(); }} />}
       {galleryPiece && <PhotoGalleryModal key={galleryPiece.id} piece={galleryPiece} loading={galleryLoading} onClose={() => setGalleryPiece(null)} />}
+      {drawerPiece && <DrawerPickerModal piece={drawerPiece} drawers={drawerOptions} query={drawerQuery} loading={drawerLoading} savingId={drawerSaving} error={drawerError} onQuery={setDrawerQuery} onSelect={(drawer) => void assignDrawer(drawer)} onClose={() => setDrawerPiece(null)} />}
       {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onConfirm={confirmation.onConfirm} onClose={() => setConfirmation(null)} />}
       {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { updateFilter("q", value); setScannerOpen(false); setSuccess(`Código leído: ${value}`); }} />}
       <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); }`}</style>
@@ -323,9 +357,9 @@ export default function WarehouseList() {
   );
 }
 
-type PieceItemProps = { piece: PiezaDesguace; selected: boolean; expanded: "vehicle" | "actions" | null; onToggle: () => void; onPanel: (type: "vehicle" | "actions") => void; onLocate: () => void; onPhotos: () => void; onAction: (action: Action) => void };
+type PieceItemProps = { piece: PiezaDesguace; selected: boolean; expanded: "vehicle" | "actions" | null; onToggle: () => void; onPanel: (type: "vehicle" | "actions") => void; onLocate: () => void; onDrawer: () => void; onPhotos: () => void; onAction: (action: Action) => void };
 
-function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onPhotos, onAction }: PieceItemProps) {
+function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDrawer, onPhotos, onAction }: PieceItemProps) {
   const photo = piece.fotos?.[0];
   return <>
     <tr className={`hover:bg-zinc-800/40 ${selected ? "bg-amber-500/5" : ""}`}>
@@ -340,17 +374,17 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onPh
       <td className="px-2 py-1.5"><OnlineBadge online={piece.publicado_online} /></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
     </tr>
-    {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
+    {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
   </>;
 }
 
-function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onPhotos, onAction }: PieceItemProps) {
+function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onDrawer, onPhotos, onAction }: PieceItemProps) {
   const photo = piece.fotos?.[0];
   return <article className={`p-2.5 ${selected ? "bg-amber-500/5" : ""}`}>
     <div className="flex items-start gap-2.5"><div className="pt-1"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></div><button onClick={onPhotos} className="relative shrink-0" title="Ver fotografías">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" className="h-12 w-12 rounded-lg object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-800 text-zinc-600"><Camera size={19} /></span>}<Images className="absolute -bottom-1 -right-1 rounded-full bg-cyan-500 p-1 text-zinc-950" size={17} /></button><div className="min-w-0 flex-1"><p className="truncate font-mono text-sm font-bold text-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</p><p className="truncate text-xs text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"><span className="font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</span><span className="flex items-center gap-1 text-zinc-500"><CalendarDays size={12} />{formatDate(piece.fecha_entrada)}</span><OnlineBadge online={piece.publicado_online} /></div></div></div>
     <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg bg-zinc-950/60 px-2.5 py-2 text-[11px]"><div><span className="text-zinc-600">Ubicación</span><p className="truncate font-mono text-cyan-300">{piece.ubicacion || "Sin ubicar"}</p></div><div><span className="text-zinc-600">Estado pieza</span><p className="truncate text-zinc-300">{piece.estado_pieza || "Sin estado"}</p></div><div className="col-span-2"><span className="text-zinc-600">Proceso</span><p className="truncate text-zinc-400">{piece.estado_proceso}</p></div></div>
     <div className="mt-2 flex gap-2"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Coche" /><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></div>
-    {expanded && <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onPhotos={onPhotos} onAction={onAction} />}</div>}
+    {expanded && <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</div>}
   </article>;
 }
 
@@ -362,8 +396,27 @@ function VehicleDetails({ piece }: { piece: PiezaDesguace }) {
   return <div><p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-cyan-300"><CarFront size={16} /> Vehículo compatible</p><div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5"><DetailItem label="Marca" value={piece.marca_vehiculo} /><DetailItem label="Modelo" value={piece.modelo_vehiculo} /><DetailItem label="Motorización" value={piece.motorizacion} /><DetailItem label="Código motor" value={piece.codigo_motor} /><DetailItem label="Años" value={[piece.ano_desde, piece.ano_hasta].filter(Boolean).join("–") || null} /></div></div>;
 }
 
-function ActionPanel({ piece, onLocate, onPhotos, onAction }: { piece: PiezaDesguace; onLocate: () => void; onPhotos: () => void; onAction: (action: Action) => void }) {
-  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label="Editar" /><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></div></div>;
+function ActionPanel({ piece, onLocate, onDrawer, onPhotos, onAction }: { piece: PiezaDesguace; onLocate: () => void; onDrawer: () => void; onPhotos: () => void; onAction: (action: Action) => void }) {
+  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label="Editar" /><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></div></div>;
+}
+
+function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, onQuery, onSelect, onClose }: { piece: PiezaDesguace; drawers: CajonDesguace[]; query: string; loading: boolean; savingId: number | null; error: string; onQuery: (value: string) => void; onSelect: (drawer: CajonDesguace) => void; onClose: () => void }) {
+  const term = query.trim().toLowerCase();
+  const visible = term ? drawers.filter((drawer) => [drawer.codigo, drawer.nombre, drawer.descripcion, drawer.ubicacion].join(" ").toLowerCase().includes(term)) : drawers;
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="dialog" aria-modal="true" aria-label={`Guardar ${piece.codigo_interno} en un cajón`} className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-900 shadow-2xl sm:rounded-3xl">
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4 sm:px-6"><div className="flex gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-500 text-zinc-950"><PackagePlus size={22} /></span><div><h2 className="text-xl font-black text-white">{piece.cajon_id ? "Cambiar de cajón" : "Guardar en un cajón"}</h2><p className="mt-0.5 text-sm text-zinc-400"><span className="font-mono font-bold text-amber-300">{piece.referencia_principal || piece.codigo_interno}</span> · {piece.nombre_pieza || "Pieza sin nombre"}</p></div></div><button onClick={onClose} aria-label="Cerrar" className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"><X /></button></header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+        {piece.cajon && <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"><Archive className="text-amber-300" /><div><p className="text-xs text-zinc-500">Cajón actual</p><p className="font-bold text-white">{piece.cajon.codigo} · {piece.cajon.nombre}</p><p className="font-mono text-xs text-zinc-500">{piece.cajon.ubicacion}</p></div></div>}
+        {error && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
+        <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input autoFocus value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar por código, nombre o ubicación..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label>
+        {loading ? <div className="flex items-center justify-center gap-2 py-16 text-zinc-400"><Loader2 className="animate-spin text-cyan-400" /> Buscando cajones con espacio...</div> : visible.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2">{visible.map((drawer) => {
+          const current = drawer.id === piece.cajon_id;
+          return <article key={drawer.id} className={`rounded-2xl border p-4 ${current ? "border-amber-500/40 bg-amber-500/5" : "border-zinc-700 bg-zinc-950"}`}><div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-black text-amber-300">{drawer.codigo}</p><h3 className="font-black text-white">{drawer.nombre}</h3><p className="mt-1 font-mono text-xs text-cyan-300">{drawer.ubicacion}</p></div><span className="rounded-full bg-zinc-800 px-2 py-1 text-xs font-bold text-zinc-300">{drawer.cantidad_piezas}/{drawer.capacidad_maxima}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800"><div className="h-full bg-cyan-500" style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div><button onClick={() => onSelect(drawer)} disabled={current || savingId !== null} className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-black ${current ? "border border-amber-500/30 text-amber-300" : "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"} disabled:opacity-50`}>{savingId === drawer.id ? <Loader2 className="animate-spin" size={16} /> : current ? <CheckCircle2 size={16} /> : <PackagePlus size={16} />}{current ? "Ya está en este cajón" : piece.cajon_id ? "Trasladar aquí" : "Guardar aquí"}</button></article>;
+        })}</div> : <div className="py-14 text-center"><Archive className="mx-auto mb-3 text-zinc-700" size={44} /><p className="font-bold text-zinc-300">No hay cajones disponibles.</p><p className="mt-1 text-sm text-zinc-500">Crea un cajón o libera espacio en uno existente.</p><Link href="/almacen-desguace/cajones" className="mt-4 inline-flex rounded-xl border border-cyan-500/30 px-4 py-2.5 font-bold text-cyan-300">Gestionar cajones</Link></div>}
+      </div>
+    </div>
+  </div>;
 }
 
 function PhotoGalleryModal({ piece, loading, onClose }: { piece: PiezaDesguace; loading: boolean; onClose: () => void }) {

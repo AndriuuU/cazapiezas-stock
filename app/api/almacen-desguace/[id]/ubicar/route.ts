@@ -70,18 +70,23 @@ export async function POST(request: Request, context: Context) {
     }
 
     const { url, key } = getSupabaseApiConfig();
+    let drawerModelAvailable = Object.prototype.hasOwnProperty.call(piece, "cajon_id");
     if (finalLocation && finalLocation !== piece.ubicacion) {
-      const occupiedParams = new URLSearchParams({ select: "id,codigo_interno", ubicacion: `eq.${finalLocation}`, id: `neq.${id}`, limit: "1" });
+      const occupiedParams = new URLSearchParams({ select: "id,codigo_interno", ubicacion: `eq.${finalLocation}`, cajon_id: "is.null", id: `neq.${id}`, limit: "1" });
       const occupiedResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${occupiedParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
       const occupied = await parseSupabaseResponse<Array<{ id: number; codigo_interno: string }>>(occupiedResponse);
       if (occupied.length) return NextResponse.json({ error: `${finalLocation} ya está ocupado por ${occupied[0].codigo_interno}.` }, { status: 409 });
+      const drawerResponse = await fetch(`${url}/rest/v1/almacen_desguace_cajones?select=codigo&ubicacion=eq.${encodeURIComponent(finalLocation)}&limit=1`, { headers: supabaseHeaders(key), cache: "no-store" });
+      drawerModelAvailable = drawerResponse.ok;
+      const drawers = drawerResponse.ok ? await parseSupabaseResponse<Array<{ codigo: string }>>(drawerResponse) : [];
+      if (drawers.length) return NextResponse.json({ error: `${finalLocation} está ocupado por el cajón ${drawers[0].codigo}.` }, { status: 409 });
     }
 
     let updatedPiece = piece;
     if (finalLocation) {
       const updateParams = new URLSearchParams({ id: `eq.${id}`, select: "*" });
       const updateResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {
-        method: "PATCH", headers: supabaseHeaders(key, { Prefer: "return=representation" }), body: JSON.stringify({ ubicacion: finalLocation }),
+        method: "PATCH", headers: supabaseHeaders(key, { Prefer: "return=representation" }), body: JSON.stringify(drawerModelAvailable ? { ubicacion: finalLocation, cajon_id: null } : { ubicacion: finalLocation }),
       });
       const updated = await parseSupabaseResponse<PiezaDesguace[]>(updateResponse);
       updatedPiece = updated[0];
