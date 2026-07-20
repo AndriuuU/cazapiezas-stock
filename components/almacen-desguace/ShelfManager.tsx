@@ -2,19 +2,19 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Edit3, Layers3, Loader2, Plus, Save, Trash2, Warehouse, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Edit3, Layers3, Loader2, MapPinned, Plus, Save, Trash2, Warehouse, X } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import type { EstanteriaDesguace, ReglaNivelEstanteria } from "@/types/almacen-desguace";
 
 type LevelRuleForm = { nivel_desde: string; nivel_hasta: string; contenido: string; categorias: string; palabras_clave: string };
 type ShelfForm = {
-  codigo: string; nombre: string; descripcion: string; niveles: string; huecos_por_nivel: string;
+  codigo: string; nombre: string; descripcion: string; zona: string; orden_plano: string; niveles: string; huecos_por_nivel: string;
   capacidad_maxima: string; llena_manual: boolean; activa: boolean; reglas_nivel: LevelRuleForm[];
 };
 
 const newRule = (from = "1", to = "1"): LevelRuleForm => ({ nivel_desde: from, nivel_hasta: to, contenido: "", categorias: "", palabras_clave: "" });
 const EMPTY_FORM: ShelfForm = {
-  codigo: "", nombre: "", descripcion: "", niveles: "4", huecos_por_nivel: "4", capacidad_maxima: "16",
+  codigo: "", nombre: "", descripcion: "", zona: "Sin zona", orden_plano: "0", niveles: "4", huecos_por_nivel: "4", capacidad_maxima: "16",
   llena_manual: false, activa: true, reglas_nivel: [newRule("1", "2"), newRule("3", "4")],
 };
 
@@ -51,7 +51,7 @@ export default function ShelfManager() {
     setEditing(shelf);
     const legacyRule = shelf.reglas_nivel.length ? shelf.reglas_nivel : (shelf.categorias.length || shelf.palabras_clave.length ? [{ nivel_desde: 1, nivel_hasta: shelf.niveles, contenido: shelf.nombre, categorias: shelf.categorias, palabras_clave: shelf.palabras_clave }] : []);
     setForm({
-      codigo: shelf.codigo, nombre: shelf.nombre, descripcion: shelf.descripcion || "", niveles: String(shelf.niveles),
+      codigo: shelf.codigo, nombre: shelf.nombre, descripcion: shelf.descripcion || "", zona: shelf.zona || "Sin zona", orden_plano: String(shelf.orden_plano || 0), niveles: String(shelf.niveles),
       huecos_por_nivel: String(shelf.huecos_por_nivel), capacidad_maxima: String(shelf.capacidad_maxima),
       llena_manual: shelf.llena_manual, activa: shelf.activa, reglas_nivel: legacyRule.map(ruleToForm),
     });
@@ -88,7 +88,7 @@ export default function ShelfManager() {
     <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link>
-        <button onClick={openNew} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-amber-400"><Plus size={18} /> Nueva estantería</button>
+        <div className="flex flex-wrap gap-2"><Link href="/almacen-desguace/plano" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10"><MapPinned size={18} /> Ver plano general</Link><button onClick={openNew} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-amber-400"><Plus size={18} /> Nueva estantería</button></div>
       </div>
       <section className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-100"><strong>Ejemplo:</strong> crea un grupo para los niveles 1–2 y escribe “Faros”; después otro para los niveles 3–4 y escribe “Retrovisores”. Al ubicar una pieza, el sistema buscará un hueco en los niveles que correspondan.</section>
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
@@ -102,7 +102,7 @@ export default function ShelfManager() {
 function ShelfCard({ shelf, onEdit, onToggleFull, onToggleActive }: { shelf: EstanteriaDesguace; onEdit: () => void; onToggleFull: () => void; onToggleActive: () => void }) {
   const barClass = shelf.llena ? "bg-red-500" : shelf.porcentaje_ocupacion >= 80 ? "bg-amber-500" : "bg-emerald-500";
   return <article className={`rounded-2xl border bg-zinc-900 p-5 ${shelf.llena ? "border-red-500/30" : "border-zinc-800"}`}>
-    <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-amber-300">{shelf.codigo}</p><h2 className="text-xl font-bold text-white">{shelf.nombre}</h2><p className="mt-1 text-sm text-zinc-500">{shelf.descripcion || "Sin descripción"}</p></div>{shelf.llena ? <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">LLENA</span> : !shelf.activa ? <span className="rounded-full bg-zinc-700 px-3 py-1 text-xs text-zinc-300">INACTIVA</span> : <CheckCircle2 className="text-emerald-400" />}</div>
+    <div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><p className="font-mono text-sm font-black text-amber-300">{shelf.codigo}</p><span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-bold text-cyan-300">{shelf.zona || "Sin zona"}</span></div><h2 className="text-xl font-bold text-white">{shelf.nombre}</h2><p className="mt-1 text-sm text-zinc-500">{shelf.descripcion || "Sin descripción"}</p></div>{shelf.llena ? <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold text-red-300">LLENA</span> : !shelf.activa ? <span className="rounded-full bg-zinc-700 px-3 py-1 text-xs text-zinc-300">INACTIVA</span> : <CheckCircle2 className="text-emerald-400" />}</div>
     <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-zinc-400"><span>{shelf.ocupados} ocupados</span><span>{shelf.disponibles} libres</span></div><div className="h-2 overflow-hidden rounded-full bg-zinc-800"><div className={`h-full ${barClass}`} style={{ width: `${Math.min(shelf.porcentaje_ocupacion, 100)}%` }} /></div><p className="mt-1 text-right text-xs text-zinc-500">{shelf.porcentaje_ocupacion}% · capacidad {shelf.capacidad_maxima}</p></div>
     <div className="mt-4 grid grid-cols-2 gap-3 text-sm"><Info label="Niveles" value={shelf.niveles} /><Info label="Huecos/nivel" value={shelf.huecos_por_nivel} /><Info label="Siguiente hueco" value={shelf.siguiente_ubicacion || "Ninguno"} mono /><Info label="Estado" value={shelf.llena_manual ? "Llena manual" : shelf.llena ? "Capacidad completa" : "Disponible"} /></div>
     <div className="mt-4 space-y-2 border-t border-zinc-800 pt-4">{shelf.reglas_nivel.length ? shelf.reglas_nivel.map((rule, index) => <div key={`${rule.nivel_desde}-${rule.nivel_hasta}-${index}`} className="flex items-center gap-2 rounded-lg bg-zinc-950 px-3 py-2 text-xs"><span className="shrink-0 font-bold text-cyan-300">Nivel {rule.nivel_desde}{rule.nivel_hasta !== rule.nivel_desde && `–${rule.nivel_hasta}`}</span><span className="truncate text-zinc-300">{rule.contenido || [...rule.categorias, ...rule.palabras_clave].join(", ")}</span></div>) : <p className="text-xs text-zinc-500">Regla general: {[...shelf.categorias, ...shelf.palabras_clave].join(", ") || "cualquier pieza"}</p>}</div>
@@ -131,7 +131,7 @@ function ShelfFormModal({ form, setForm, editing, saving, error, onSubmit, onClo
       {error && <div role="alert" className="sticky top-[89px] z-10 mx-5 mt-4 flex gap-3 rounded-xl border border-red-400/40 bg-red-950 p-4 text-sm text-red-100 shadow-xl"><AlertTriangle className="shrink-0 text-red-400" size={20} /><div><p className="font-bold">No se ha podido guardar</p><p className="mt-1">{error}</p></div></div>}
       <div className="space-y-6 p-5">
         <FormSection number="1" title="Identifica la estantería" description="El código debe ser único, como E01, E02...">
-          <div className="grid gap-4 md:grid-cols-2"><Label text="Código"><input required pattern="E[0-9]{2}" title="Usa E seguido de dos números, por ejemplo E01" value={form.codigo} onChange={(e) => update("codigo", e.target.value.toUpperCase())} placeholder="E01" className={input} /></Label><Label text="Nombre"><input required value={form.nombre} onChange={(e) => update("nombre", e.target.value)} placeholder="Estantería principal" className={input} /></Label><Label text="Descripción (opcional)" wide><textarea value={form.descripcion} onChange={(e) => update("descripcion", e.target.value)} rows={2} placeholder="Zona, pasillo o cualquier indicación útil" className={input} /></Label></div>
+          <div className="grid gap-4 md:grid-cols-2"><Label text="Código"><input required pattern="E[0-9]{2}" title="Usa E seguido de dos números, por ejemplo E01" value={form.codigo} onChange={(e) => update("codigo", e.target.value.toUpperCase())} placeholder="E01" className={input} /></Label><Label text="Nombre"><input required value={form.nombre} onChange={(e) => update("nombre", e.target.value)} placeholder="Estantería principal" className={input} /></Label><Label text="Zona o pasillo"><input required value={form.zona} onChange={(e) => update("zona", e.target.value)} placeholder="Zona A · Iluminación" className={input} /></Label><Label text="Orden dentro de la zona"><input type="number" min="0" max="9999" value={form.orden_plano} onChange={(e) => update("orden_plano", e.target.value)} className={input} /></Label><Label text="Descripción (opcional)" wide><textarea value={form.descripcion} onChange={(e) => update("descripcion", e.target.value)} rows={2} placeholder="Junto a la entrada, pared izquierda..." className={input} /></Label></div>
         </FormSection>
         <FormSection number="2" title="Indica su tamaño" description="Cada cruce de nivel y hueco será una ubicación disponible.">
           <div className="grid gap-4 sm:grid-cols-3"><Label text="Número de niveles"><input required type="number" min="1" max="99" value={form.niveles} onChange={(e) => updateDimensions("niveles", e.target.value)} className={input} /></Label><Label text="Huecos en cada nivel"><input required type="number" min="1" max="99" value={form.huecos_por_nivel} onChange={(e) => updateDimensions("huecos_por_nivel", e.target.value)} className={input} /></Label><Label text="Capacidad que se usará"><input required type="number" min="1" max={Math.max(1, Number(form.niveles) * Number(form.huecos_por_nivel))} value={form.capacidad_maxima} onChange={(e) => update("capacidad_maxima", e.target.value)} className={input} /></Label></div>

@@ -86,18 +86,24 @@ export async function POST(request: Request, context: Context) {
       const updated = await parseSupabaseResponse<PiezaDesguace[]>(updateResponse);
       updatedPiece = updated[0];
     }
-    const movementResponse = await fetch(`${url}/rest/v1/almacen_desguace_ubicaciones_movimientos`, {
-      method: "POST", headers: supabaseHeaders(key, { Prefer: "return=minimal" }),
-      body: JSON.stringify({
-        pieza_id: Number(id),
-        estanteria_sugerida_id: suggested?.estanteria.id || null,
-        ubicacion_sugerida: body.ubicacion_sugerida || null,
-        resultado: result,
-        ubicacion_final: finalLocation,
-        motivo: String(body.motivo || "").trim() || null,
-      }),
-    });
-    if (!movementResponse.ok) throw new Error("La pieza se actualizó, pero no se pudo registrar el movimiento.");
+    if (result === "no_colocada") {
+      const movementResponse = await fetch(`${url}/rest/v1/almacen_desguace_ubicaciones_movimientos`, {
+        method: "POST", headers: supabaseHeaders(key, { Prefer: "return=minimal" }),
+        body: JSON.stringify({
+          pieza_id: Number(id),
+          estanteria_sugerida_id: suggested?.estanteria.id || null,
+          ubicacion_anterior: piece.ubicacion,
+          ubicacion_sugerida: body.ubicacion_sugerida || null,
+          resultado: result,
+          ubicacion_final: null,
+          tipo_movimiento: "incidencia",
+          motivo: String(body.motivo || "").trim(),
+          usuario_nombre: "Usuario de almacén",
+          origen: "asistente de ubicación",
+        }),
+      });
+      if (!movementResponse.ok) throw new Error("No se pudo registrar la incidencia de colocación.");
+    }
     return NextResponse.json({ piece: updatedPiece, shelf: destinationShelf });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo confirmar la colocación." }, { status: 500 });

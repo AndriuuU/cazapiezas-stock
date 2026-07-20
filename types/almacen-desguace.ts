@@ -49,6 +49,8 @@ export interface EstanteriaDesguace {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  zona: string;
+  orden_plano: number;
   categorias: string[];
   palabras_clave: string[];
   reglas_nivel: ReglaNivelEstanteria[];
@@ -66,6 +68,37 @@ export interface EstanteriaDesguace {
   motivo_llena: "manual" | "capacidad" | null;
   siguiente_ubicacion: string | null;
   siguientes_ubicaciones_por_nivel: Record<number, string | null>;
+}
+
+export type TipoMovimientoUbicacion = "colocacion" | "traslado" | "retirada" | "incidencia";
+
+export interface MovimientoUbicacion {
+  id: number;
+  pieza_id: number;
+  estanteria_sugerida_id: number | null;
+  ubicacion_anterior: string | null;
+  ubicacion_sugerida: string | null;
+  resultado: "colocada_sugerida" | "colocada_alternativa" | "no_colocada" | "movida" | "retirada_ubicacion";
+  ubicacion_final: string | null;
+  tipo_movimiento: TipoMovimientoUbicacion;
+  motivo: string | null;
+  usuario_nombre: string;
+  origen: string;
+  created_at: string;
+  pieza?: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza">;
+  estanteria_sugerida?: Pick<EstanteriaDesguace, "id" | "codigo" | "nombre" | "zona"> | null;
+}
+
+export interface HuecoPlanoAlmacen {
+  ubicacion: string;
+  nivel: number;
+  hueco: number;
+  disponible: boolean;
+  pieza: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria"> | null;
+}
+
+export interface EstanteriaPlanoAlmacen extends EstanteriaDesguace {
+  huecos: HuecoPlanoAlmacen[];
 }
 
 export interface SugerenciaUbicacion {

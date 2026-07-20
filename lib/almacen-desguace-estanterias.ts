@@ -1,4 +1,4 @@
-import type { EstanteriaDesguace, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
+import type { EstanteriaDesguace, EstanteriaPlanoAlmacen, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 type PiezaParaSugerencia = Partial<Pick<PiezaDesguace, "categoria" | "nombre_pieza" | "descripcion" | "marca_pieza" | "marca_vehiculo" | "modelo_vehiculo">>;
@@ -16,6 +16,8 @@ export function getLocationParts(location?: string | null) {
 function firstFreeLocationInLevels(shelf: EstanteriaRow, occupied: Set<string>, from = 1, to = shelf.niveles) {
   for (let level = from; level <= to; level++) {
     for (let slot = 1; slot <= shelf.huecos_por_nivel; slot++) {
+      const position = (level - 1) * shelf.huecos_por_nivel + slot;
+      if (position > shelf.capacidad_maxima) continue;
       const location = `DESGUACE-${shelf.codigo}-N${String(level).padStart(2, "0")}-C${String(slot).padStart(2, "0")}`;
       if (!occupied.has(location)) return location;
     }
@@ -25,7 +27,7 @@ function firstFreeLocationInLevels(shelf: EstanteriaRow, occupied: Set<string>, 
 
 export async function getShelves() {
   const { url, key } = getSupabaseApiConfig();
-  const shelvesParams = new URLSearchParams({ select: "*", order: "codigo.asc", limit: "500" });
+  const shelvesParams = new URLSearchParams({ select: "*", order: "zona.asc,orden_plano.asc,codigo.asc", limit: "500" });
   const locationsParams = new URLSearchParams({ select: "ubicacion", ubicacion: "not.is.null", limit: "5000" });
   const [shelvesResponse, locationsResponse] = await Promise.all([
     fetch(`${url}/rest/v1/almacen_desguace_estanterias?${shelvesParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
@@ -55,6 +57,48 @@ export async function getShelves() {
       siguientes_ubicaciones_por_nivel: full ? {} : nextByLevel,
     };
   });
+}
+
+export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
+  const { url, key } = getSupabaseApiConfig();
+  const piecesParams = new URLSearchParams({
+    select: "id,codigo_interno,nombre_pieza,categoria,ubicacion",
+    ubicacion: "not.is.null",
+    limit: "5000",
+  });
+  const [shelves, piecesResponse] = await Promise.all([
+    getShelves(),
+    fetch(`${url}/rest/v1/almacen_desguace_piezas?${piecesParams}`, {
+      headers: supabaseHeaders(key),
+      cache: "no-store",
+    }),
+  ]);
+  const pieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria" | "ubicacion">>>(piecesResponse);
+  const piecesByLocation = new Map(pieces.map((piece) => [piece.ubicacion, piece]));
+
+  return shelves.map((shelf) => ({
+    ...shelf,
+    zona: shelf.zona || "Sin zona",
+    orden_plano: Number(shelf.orden_plano) || 0,
+    huecos: Array.from({ length: shelf.niveles * shelf.huecos_por_nivel }, (_, index) => {
+      const level = Math.floor(index / shelf.huecos_por_nivel) + 1;
+      const slot = (index % shelf.huecos_por_nivel) + 1;
+      const location = `DESGUACE-${shelf.codigo}-N${String(level).padStart(2, "0")}-C${String(slot).padStart(2, "0")}`;
+      const piece = piecesByLocation.get(location) || null;
+      return {
+        ubicacion: location,
+        nivel: level,
+        hueco: slot,
+        disponible: !piece && shelf.activa && !shelf.llena_manual && index < shelf.capacidad_maxima,
+        pieza: piece ? {
+          id: piece.id,
+          codigo_interno: piece.codigo_interno,
+          nombre_pieza: piece.nombre_pieza,
+          categoria: piece.categoria,
+        } : null,
+      };
+    }),
+  }));
 }
 
 function normalize(value: string | null | undefined) {

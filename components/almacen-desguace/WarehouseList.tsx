@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import Link from "next/link";
 import {
   CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, Eye, FilterX,
-  Images, Loader2, MapPin, MoreHorizontal, PackageCheck, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
+  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackageCheck, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
   SlidersHorizontal, Tag, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
@@ -226,6 +226,12 @@ export default function WarehouseList() {
             <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} piezas encontradas en Almacén Desguace.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/almacen-desguace/plano" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
+              <MapPinned size={18} /> Plano general
+            </Link>
+            <Link href="/almacen-desguace/historial" className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 font-bold text-zinc-200 hover:border-cyan-500/50 hover:text-cyan-300">
+              <History size={18} /> Historial
+            </Link>
             <Link href="/almacen-desguace/estanterias" className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 font-bold text-zinc-200 hover:border-cyan-500/50 hover:text-cyan-300">
               <Warehouse size={18} /> Organizar estanterías
             </Link>

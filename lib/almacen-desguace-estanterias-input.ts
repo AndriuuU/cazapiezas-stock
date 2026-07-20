@@ -28,6 +28,8 @@ export function normalizeShelf(value: unknown) {
     codigo: String(source.codigo || "").trim().toUpperCase(),
     nombre: String(source.nombre || "").trim(),
     descripcion: String(source.descripcion || "").trim() || null,
+    zona: String(source.zona || "Sin zona").trim().slice(0, 80) || "Sin zona",
+    orden_plano: Math.max(0, Math.min(9999, Math.trunc(Number(source.orden_plano) || 0))),
     categorias: textList(source.categorias),
     palabras_clave: textList(source.palabras_clave),
     reglas_nivel: levelRules(source.reglas_nivel),
@@ -43,6 +45,7 @@ export function validateShelf(shelf: ReturnType<typeof normalizeShelf>) {
   const errors: string[] = [];
   if (!/^E\d{2}$/.test(shelf.codigo)) errors.push("El código debe tener el formato E01.");
   if (!shelf.nombre) errors.push("Indica el nombre o contenido de la estantería.");
+  if (!shelf.zona) errors.push("Indica la zona o pasillo de la estantería.");
   if (!Number.isInteger(shelf.capacidad_maxima) || shelf.capacidad_maxima < 1 || shelf.capacidad_maxima > shelf.niveles * shelf.huecos_por_nivel) errors.push("La capacidad debe estar entre 1 y el número total de huecos.");
   const assignedLevels = new Set<number>();
   shelf.reglas_nivel.forEach((rule, index) => {
