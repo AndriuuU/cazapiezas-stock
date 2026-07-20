@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Permite conexiones desde tu red local (el móvil)
   allowedDevOrigins: [
-    "192.168.1.30",
+    "192.168.1.34",
     "localhost"
   ],
   images: {

@@ -36,6 +36,14 @@ export interface FotoDesguace {
   orden: number;
 }
 
+export interface ReglaNivelEstanteria {
+  nivel_desde: number;
+  nivel_hasta: number;
+  contenido: string;
+  categorias: string[];
+  palabras_clave: string[];
+}
+
 export interface EstanteriaDesguace {
   id: number;
   codigo: string;
@@ -43,6 +51,7 @@ export interface EstanteriaDesguace {
   descripcion: string | null;
   categorias: string[];
   palabras_clave: string[];
+  reglas_nivel: ReglaNivelEstanteria[];
   niveles: number;
   huecos_por_nivel: number;
   capacidad_maxima: number;
@@ -56,6 +65,7 @@ export interface EstanteriaDesguace {
   llena: boolean;
   motivo_llena: "manual" | "capacidad" | null;
   siguiente_ubicacion: string | null;
+  siguientes_ubicaciones_por_nivel: Record<number, string | null>;
 }
 
 export interface SugerenciaUbicacion {
