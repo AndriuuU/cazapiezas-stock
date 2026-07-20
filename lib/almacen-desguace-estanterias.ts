@@ -1,4 +1,4 @@
-import type { EstanteriaDesguace, EstanteriaPlanoAlmacen, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
+import type { CajonDesguace, EstanteriaDesguace, EstanteriaPlanoAlmacen, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 type PiezaParaSugerencia = Partial<Pick<PiezaDesguace, "categoria" | "nombre_pieza" | "descripcion" | "marca_pieza" | "marca_vehiculo" | "modelo_vehiculo">>;
@@ -28,17 +28,29 @@ function firstFreeLocationInLevels(shelf: EstanteriaRow, occupied: Set<string>, 
 export async function getShelves() {
   const { url, key } = getSupabaseApiConfig();
   const shelvesParams = new URLSearchParams({ select: "*", order: "zona.asc,orden_plano.asc,codigo.asc", limit: "500" });
-  const locationsParams = new URLSearchParams({ select: "ubicacion", ubicacion: "not.is.null", limit: "5000" });
-  const [shelvesResponse, locationsResponse] = await Promise.all([
+  const locationsParams = new URLSearchParams({ select: "ubicacion,cajon_id", ubicacion: "not.is.null", limit: "10000" });
+  const drawersParams = new URLSearchParams({ select: "ubicacion", limit: "5000" });
+  const [shelvesResponse, locationsResponse, drawersResponse] = await Promise.all([
     fetch(`${url}/rest/v1/almacen_desguace_estanterias?${shelvesParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
     fetch(`${url}/rest/v1/almacen_desguace_piezas?${locationsParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
+    fetch(`${url}/rest/v1/almacen_desguace_cajones?${drawersParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
   ]);
   const shelves = await parseSupabaseResponse<EstanteriaRow[]>(shelvesResponse);
-  const locations = await parseSupabaseResponse<Array<{ ubicacion: string }>>(locationsResponse);
-  const occupiedLocations = new Set(locations.map((row) => row.ubicacion));
+  let locations: Array<{ ubicacion: string; cajon_id: number | null }>;
+  let drawers: Array<{ ubicacion: string }>;
+  if (locationsResponse.ok && drawersResponse.ok) {
+    locations = await parseSupabaseResponse(locationsResponse);
+    drawers = await parseSupabaseResponse(drawersResponse);
+  } else {
+    const legacyParams = new URLSearchParams({ select: "ubicacion", ubicacion: "not.is.null", limit: "10000" });
+    const legacyResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${legacyParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
+    locations = (await parseSupabaseResponse<Array<{ ubicacion: string }>>(legacyResponse)).map((row) => ({ ...row, cajon_id: null }));
+    drawers = [];
+  }
+  const occupiedLocations = new Set([...locations.filter((row) => row.cajon_id === null).map((row) => row.ubicacion), ...drawers.map((row) => row.ubicacion)]);
 
   return shelves.map((shelf): EstanteriaDesguace => {
-    const occupied = locations.filter((row) => getShelfCode(row.ubicacion) === shelf.codigo).length;
+    const occupied = [...occupiedLocations].filter((location) => getShelfCode(location) === shelf.codigo).length;
     const fullByCapacity = occupied >= shelf.capacidad_maxima;
     const full = shelf.llena_manual || fullByCapacity;
     const nextByLevel = Object.fromEntries(Array.from({ length: shelf.niveles }, (_, index) => {
@@ -62,19 +74,33 @@ export async function getShelves() {
 export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
   const { url, key } = getSupabaseApiConfig();
   const piecesParams = new URLSearchParams({
-    select: "id,codigo_interno,nombre_pieza,categoria,ubicacion",
+    select: "id,codigo_interno,nombre_pieza,categoria,ubicacion,cajon_id",
     ubicacion: "not.is.null",
+    cajon_id: "is.null",
     limit: "5000",
   });
-  const [shelves, piecesResponse] = await Promise.all([
+  const drawersParams = new URLSearchParams({ select: "*", limit: "5000" });
+  const drawerPiecesParams = new URLSearchParams({ select: "cajon_id", cajon_id: "not.is.null", limit: "10000" });
+  const [shelves, piecesResponse, drawersResponse, drawerPiecesResponse] = await Promise.all([
     getShelves(),
     fetch(`${url}/rest/v1/almacen_desguace_piezas?${piecesParams}`, {
       headers: supabaseHeaders(key),
       cache: "no-store",
     }),
+    fetch(`${url}/rest/v1/almacen_desguace_cajones?${drawersParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
+    fetch(`${url}/rest/v1/almacen_desguace_piezas?${drawerPiecesParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
   ]);
-  const pieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria" | "ubicacion">>>(piecesResponse);
+  const pieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria" | "ubicacion" | "cajon_id">>>(piecesResponse);
+  const drawerRows = await parseSupabaseResponse<Array<Omit<CajonDesguace, "cantidad_piezas" | "disponibles" | "porcentaje_ocupacion" | "lleno">>>(drawersResponse);
+  const drawerPieces = await parseSupabaseResponse<Array<{ cajon_id: number }>>(drawerPiecesResponse);
+  const drawerCounts = new Map<number, number>();
+  drawerPieces.forEach((piece) => drawerCounts.set(piece.cajon_id, (drawerCounts.get(piece.cajon_id) || 0) + 1));
+  const drawers = drawerRows.map((drawer) => {
+    const count = drawerCounts.get(drawer.id) || 0;
+    return { ...drawer, cantidad_piezas: count, disponibles: Math.max(0, drawer.capacidad_maxima - count), porcentaje_ocupacion: Math.min(100, Math.round(count / drawer.capacidad_maxima * 100)), lleno: drawer.lleno_manual || count >= drawer.capacidad_maxima };
+  });
   const piecesByLocation = new Map(pieces.map((piece) => [piece.ubicacion, piece]));
+  const drawersByLocation = new Map(drawers.map((drawer) => [drawer.ubicacion, drawer]));
 
   return shelves.map((shelf) => ({
     ...shelf,
@@ -85,17 +111,19 @@ export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
       const slot = (index % shelf.huecos_por_nivel) + 1;
       const location = `DESGUACE-${shelf.codigo}-N${String(level).padStart(2, "0")}-C${String(slot).padStart(2, "0")}`;
       const piece = piecesByLocation.get(location) || null;
+      const drawer = drawersByLocation.get(location) || null;
       return {
         ubicacion: location,
         nivel: level,
         hueco: slot,
-        disponible: !piece && shelf.activa && !shelf.llena_manual && index < shelf.capacidad_maxima,
+        disponible: !piece && !drawer && shelf.activa && !shelf.llena_manual && index < shelf.capacidad_maxima,
         pieza: piece ? {
           id: piece.id,
           codigo_interno: piece.codigo_interno,
           nombre_pieza: piece.nombre_pieza,
           categoria: piece.categoria,
         } : null,
+        cajon: drawer ? { id: drawer.id, codigo: drawer.codigo, nombre: drawer.nombre, cantidad_piezas: drawer.cantidad_piezas, capacidad_maxima: drawer.capacidad_maxima, lleno: drawer.lleno } : null,
       };
     }),
   }));

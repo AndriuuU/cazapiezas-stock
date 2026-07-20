@@ -12,7 +12,7 @@ const fields = [
   ["nombre_pieza", "Nombre de la pieza"], ["descripcion", "Descripción"], ["categoria", "Categoría"],
   ["marca_pieza", "Marca de la pieza"], ["referencia_principal", "Referencia principal"],
   ["referencia_oem", "Referencia OEM"], ["referencias_equivalentes", "Referencias equivalentes"],
-  ["marca_vehiculo", "Marca del vehículo"], ["modelo_vehiculo", "Modelo del vehículo"],
+  ["marca_vehiculo", "Marca del vehículo"], ["modelo_vehiculo", "Modelo del vehículo"], ["matricula_vehiculo", "Matrícula del vehículo"],
   ["motorizacion", "Motorización"], ["codigo_motor", "Código motor"], ["procedencia", "Procedencia"],
 ] as const;
 

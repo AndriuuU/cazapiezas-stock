@@ -10,7 +10,7 @@ export const UBICACION_PATTERN = /^DESGUACE-E\d{2}-N\d{2}-C\d{2}$/;
 const TEXT_FIELDS = [
   "nombre_pieza", "descripcion", "categoria", "marca_pieza",
   "referencia_principal", "referencia_oem", "referencias_equivalentes",
-  "marca_vehiculo", "modelo_vehiculo", "motorizacion", "codigo_motor",
+  "marca_vehiculo", "modelo_vehiculo", "matricula_vehiculo", "motorizacion", "codigo_motor",
   "ubicacion", "procedencia", "fecha_entrada",
 ] as const;
 const NUMBER_FIELDS = [

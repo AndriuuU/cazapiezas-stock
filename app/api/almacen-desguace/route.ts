@@ -7,7 +7,7 @@ import { withPublicPhotos } from "@/lib/almacen-desguace-data";
 
 const SEARCH_FIELDS = [
   "codigo_interno", "nombre_pieza", "referencia_principal", "referencia_oem",
-  "marca_pieza", "marca_vehiculo", "modelo_vehiculo", "codigo_motor", "ubicacion",
+  "marca_pieza", "marca_vehiculo", "modelo_vehiculo", "matricula_vehiculo", "codigo_motor", "ubicacion",
 ];
 let categoryCache: { values: string[]; expiresAt: number } | undefined;
 
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       "precio.asc": "precio_venta.asc.nullslast",
     };
     const params = new URLSearchParams({
-      select: "*,fotos:almacen_desguace_fotos(*)",
+      select: "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
       order: sortOptions[query.get("sort") || "created_at.desc"] || sortOptions["created_at.desc"],
       limit: String(pageSize),
       offset: String(offset),
@@ -73,9 +73,19 @@ export async function GET(request: Request) {
     if (published === "true" || published === "false") params.set("publicado_online", `eq.${published}`);
 
     const { url, key } = getSupabaseApiConfig();
-    const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
+    let response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
       headers: supabaseHeaders(key, { Prefer: "count=exact" }), cache: "no-store",
     });
+    if (!response.ok) {
+      params.set("select", "*,fotos:almacen_desguace_fotos(*)");
+      for (const keyName of ["or", "and"]) {
+        const value = params.get(keyName);
+        if (value) params.set(keyName, value.replace(/matricula_vehiculo\.ilike\.\*[^*]+\*,?/g, ""));
+      }
+      response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
+        headers: supabaseHeaders(key, { Prefer: "count=exact" }), cache: "no-store",
+      });
+    }
     const contentRange = response.headers.get("content-range");
     const totalValue = contentRange?.split("/")[1];
     const piezas = await parseSupabaseResponse<PiezaDesguace[]>(response);
