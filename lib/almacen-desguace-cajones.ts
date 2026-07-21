@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
+import { withPublicPhotos } from "@/lib/almacen-desguace-data";
 import type { CajonDesguace, MovimientoCajon, PiezaDesguace } from "@/types/almacen-desguace";
 
 type CajonRow = Omit<CajonDesguace, "cantidad_piezas" | "disponibles" | "porcentaje_ocupacion" | "lleno" | "piezas" | "movimientos">;
@@ -33,7 +34,7 @@ export async function getDrawers() {
 export async function getDrawer(id: string | number) {
   const { url, key } = getSupabaseApiConfig();
   const drawerParams = new URLSearchParams({ select: "*", id: `eq.${id}`, limit: "1" });
-  const pieceParams = new URLSearchParams({ select: "*", cajon_id: `eq.${id}`, order: "nombre_pieza.asc.nullslast", limit: "5000" });
+  const pieceParams = new URLSearchParams({ select: "*,fotos:almacen_desguace_fotos(*)", cajon_id: `eq.${id}`, order: "nombre_pieza.asc.nullslast", limit: "5000" });
   const movementParams = new URLSearchParams({
     select: "*,pieza:almacen_desguace_piezas(id,codigo_interno,nombre_pieza)", cajon_id: `eq.${id}`, order: "created_at.desc", limit: "500",
   });
@@ -48,5 +49,9 @@ export async function getDrawer(id: string | number) {
     parseSupabaseResponse<MovimientoCajon[]>(movementResponse),
   ]);
   if (!drawers[0]) return null;
-  return { ...enrichDrawer(drawers[0], pieces.length), piezas: pieces, movimientos: movements };
+  const piecesWithPhotos = await Promise.all(pieces.map((piece) => {
+    const principal = (piece.fotos || []).find((photo) => photo.es_principal) || piece.fotos?.[0];
+    return principal ? withPublicPhotos({ ...piece, fotos: [principal] }) : piece;
+  }));
+  return { ...enrichDrawer(drawers[0], pieces.length), piezas: piecesWithPhotos, movimientos: movements };
 }

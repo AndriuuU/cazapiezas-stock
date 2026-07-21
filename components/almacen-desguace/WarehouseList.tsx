@@ -15,6 +15,7 @@ import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
 import { ESTADOS_PIEZA, ESTADOS_PROCESO, type CajonDesguace, type PiezaDesguace } from "@/types/almacen-desguace";
 
 type Action = "publicar" | "reservar" | "vender" | "enviar" | "retirar";
+type ListView = "almacen" | "retiradas";
 type BulkField = "estado_pieza" | "estado_proceso" | "publicado_online";
 type Filters = {
   q: string;
@@ -42,6 +43,7 @@ const EMPTY_FILTERS: Filters = {
 
 export default function WarehouseList() {
   const [pieces, setPieces] = useState<PiezaDesguace[]>([]);
+  const [view, setView] = useState<ListView>("almacen");
   const [categories, setCategories] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -50,6 +52,7 @@ export default function WarehouseList() {
   const [totalPages, setTotalPages] = useState(1);
   const [sort, setSort] = useState("created_at.desc");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
   const [bulkField, setBulkField] = useState<BulkField>("estado_proceso");
   const [bulkValue, setBulkValue] = useState("");
   const [loading, setLoading] = useState(true);
@@ -80,6 +83,7 @@ export default function WarehouseList() {
       params.set("page", String(page));
       params.set("page_size", String(pageSize));
       params.set("sort", sort);
+      params.set("vista", view);
       const response = await fetch(`/api/almacen-desguace?${params}`);
       const data = await response.json() as ListResponse & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo cargar el almacén.");
@@ -93,7 +97,7 @@ export default function WarehouseList() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize, sort]);
+  }, [filters, page, pageSize, sort, view]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), filters.q ? 350 : 100);
@@ -114,6 +118,15 @@ export default function WarehouseList() {
     setSuccess("");
   }
 
+  function changeView(nextView: ListView) {
+    setView(nextView);
+    setFilters((current) => ({ ...current, estado_proceso: "", ubicacion: "" }));
+    setPage(1);
+    setSelected(new Set());
+    setExpandedPanel(null);
+    setSuccess("");
+  }
+
   async function executeAction(piece: PiezaDesguace, action: Action) {
     setError("");
     setSuccess("");
@@ -131,7 +144,7 @@ export default function WarehouseList() {
       setConfirmation({
         title: retiring ? "¿Retirar esta pieza?" : "¿Marcar la pieza como vendida?",
         description: retiring
-          ? `${piece.codigo_interno} dejará de estar disponible en el flujo de venta.`
+          ? `${piece.codigo_interno} saldrá de Piezas almacenadas, aparecerá en Retiradas y dejará libre su ubicación${piece.cajon_id ? " y su espacio en el cajón" : ""}.`
           : `${piece.codigo_interno} cambiará al estado Vendida.`,
         confirmLabel: retiring ? "Sí, retirar" : "Sí, marcar vendida",
         tone: "red",
@@ -200,6 +213,29 @@ export default function WarehouseList() {
     });
   }
 
+  async function selectAllResults() {
+    if (selected.size === total) {
+      setSelected(new Set());
+      return;
+    }
+    setSelectingAll(true); setError(""); setSuccess("");
+    try {
+      const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+      params.set("vista", view);
+      params.set("all_ids", "true");
+      const response = await fetch(`/api/almacen-desguace?${params}`);
+      const data = await response.json() as { ids?: number[]; total?: number; error?: string };
+      if (!response.ok) throw new Error(data.error || "No se pudieron seleccionar todas las piezas.");
+      if ((data.total || 0) > (data.ids?.length || 0)) throw new Error("Hay más de 1.000 resultados. Aplica algún filtro antes de seleccionarlos todos.");
+      setSelected(new Set(data.ids || []));
+      setSuccess(`${(data.ids || []).length} piezas seleccionadas.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron seleccionar todas las piezas.");
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
   function togglePanel(pieceId: number, type: "vehicle" | "actions") {
     setExpandedPanel((current) => current?.pieceId === pieceId && current.type === type ? null : { pieceId, type });
   }
@@ -252,8 +288,8 @@ export default function WarehouseList() {
       <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black text-white">Piezas almacenadas</h1>
-            <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} piezas encontradas en Almacén Desguace.</p>
+            <h1 className="text-2xl font-black text-white">{view === "almacen" ? "Piezas almacenadas" : "Piezas retiradas"}</h1>
+            <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} {view === "almacen" ? "piezas disponibles en Almacén Desguace" : "piezas retiradas del almacén"}.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
@@ -274,6 +310,11 @@ export default function WarehouseList() {
           </div>
         </div>
 
+        <nav className="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 sm:grid-cols-2" aria-label="Listados de piezas">
+          <button onClick={() => changeView("almacen")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "almacen" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><Warehouse size={18} /> Almacenadas</button>
+          <button onClick={() => changeView("retiradas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "retiradas" ? "bg-red-500 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><PackageX size={18} /> Retiradas</button>
+        </nav>
+
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-semibold text-zinc-300">Buscar y filtrar</p>
@@ -292,7 +333,7 @@ export default function WarehouseList() {
             <div className={showMobileFilters ? "contents" : "hidden md:contents"}>
               <FilterSelect value={filters.categoria} onChange={(value) => updateFilter("categoria", value)}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
               <FilterSelect value={filters.estado_pieza} onChange={(value) => updateFilter("estado_pieza", value)}><option value="">Cualquier estado</option>{ESTADOS_PIEZA.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
-              <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
+              {view === "almacen" ? <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.filter((value) => value !== "Retirada").map((value) => <option key={value}>{value}</option>)}</FilterSelect> : <div className="flex items-center rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold text-red-300">Proceso: Retirada</div>}
               <FilterSelect value={filters.publicado_online} onChange={(value) => updateFilter("publicado_online", value)}><option value="">Online y no online</option><option value="true">Publicadas online</option><option value="false">No publicadas</option></FilterSelect>
               <label className="relative md:col-span-2 xl:col-span-2"><MapPin className="absolute left-3 top-3 text-zinc-500" size={18} /><input value={filters.ubicacion} onChange={(event) => updateFilter("ubicacion", event.target.value.toUpperCase())} placeholder="Ubicación: E01, DESGUACE-E01..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 font-mono text-white focus:border-amber-500 focus:outline-none" /></label>
               <FilterSelect value={sort} onChange={(value) => { setSort(value); setPage(1); }}><option value="created_at.desc">Más recientes primero</option><option value="created_at.asc">Más antiguas primero</option><option value="nombre.asc">Nombre A–Z</option><option value="referencia.asc">Referencia A–Z</option><option value="ubicacion.asc">Ubicación</option><option value="precio.desc">Mayor precio</option><option value="precio.asc">Menor precio</option></FilterSelect>
@@ -305,7 +346,7 @@ export default function WarehouseList() {
           <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <div className="min-w-48">
-                <p className="font-bold text-amber-200">{selected.size} piezas seleccionadas</p>
+                <p className="font-bold text-amber-200">{selected.size.toLocaleString("es-ES")} {selected.size === total && total > 0 ? "piezas seleccionadas · selección completa" : "piezas seleccionadas"}</p>
                 <button onClick={() => setSelected(new Set())} className="text-xs text-amber-300/70 hover:text-amber-200">Cancelar selección</button>
               </div>
               <FieldLabel label="Dato que quieres modificar">
@@ -326,7 +367,7 @@ export default function WarehouseList() {
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
-            <span className="flex items-center gap-2"><span className="lg:hidden"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></span><span>Mostrando {firstResult}–{lastResult} de {total.toLocaleString("es-ES")}</span></span>
+            <span className="flex flex-wrap items-center gap-3"><span className="lg:hidden"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></span><span>Mostrando {firstResult}–{lastResult} de {total.toLocaleString("es-ES")}</span><button onClick={() => void selectAllResults()} disabled={selectingAll || !total} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-xs font-black text-amber-300 hover:bg-amber-500/10 disabled:opacity-40">{selectingAll ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}{selected.size === total && total > 0 ? "Quitar selección completa" : `Seleccionar las ${total.toLocaleString("es-ES")}`}</button></span>
             <label className="flex items-center gap-2">Filas por página<select aria-label="Filas por página" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); setSelected(new Set()); }} className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-white"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
           </div>
           {loading ? (
@@ -397,7 +438,8 @@ function VehicleDetails({ piece }: { piece: PiezaDesguace }) {
 }
 
 function ActionPanel({ piece, onLocate, onDrawer, onPhotos, onAction }: { piece: PiezaDesguace; onLocate: () => void; onDrawer: () => void; onPhotos: () => void; onAction: (action: Action) => void }) {
-  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label="Editar" /><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></div></div>;
+  const retired = piece.estado_proceso === "Retirada";
+  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label={retired ? "Editar o recuperar" : "Editar"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" />{!retired && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{retired && <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-200">Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar.</p>}</div>;
 }
 
 function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, onQuery, onSelect, onClose }: { piece: PiezaDesguace; drawers: CajonDesguace[]; query: string; loading: boolean; savingId: number | null; error: string; onQuery: (value: string) => void; onSelect: (drawer: CajonDesguace) => void; onClose: () => void }) {

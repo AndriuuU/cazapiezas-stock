@@ -34,9 +34,10 @@ export async function GET(request: Request) {
 
   try {
     const query = new URL(request.url).searchParams;
-    const pageSize = Math.min(100, Math.max(10, Number(query.get("page_size") || 25)));
+    const allIds = query.get("all_ids") === "true";
+    const pageSize = allIds ? 1000 : Math.min(100, Math.max(10, Number(query.get("page_size") || 25)));
     const page = Math.max(1, Number(query.get("page") || 1));
-    const offset = (page - 1) * pageSize;
+    const offset = allIds ? 0 : (page - 1) * pageSize;
     const sortOptions: Record<string, string> = {
       "created_at.desc": "created_at.desc",
       "created_at.asc": "created_at.asc",
@@ -47,11 +48,13 @@ export async function GET(request: Request) {
       "precio.asc": "precio_venta.asc.nullslast",
     };
     const params = new URLSearchParams({
-      select: "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
+      select: allIds ? "id" : "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
       order: sortOptions[query.get("sort") || "created_at.desc"] || sortOptions["created_at.desc"],
       limit: String(pageSize),
       offset: String(offset),
     });
+    const view = query.get("vista") === "retiradas" ? "retiradas" : "almacen";
+    params.set("estado_proceso", view === "retiradas" ? "eq.Retirada" : "neq.Retirada");
     const search = (query.get("q") || "").trim().replace(/[,().*]/g, " ").replace(/\s+/g, " ");
     if (search) {
       const terms = search.split(" ").filter(Boolean).slice(0, 5);
@@ -67,7 +70,8 @@ export async function GET(request: Request) {
     };
     for (const [queryKey, column] of Object.entries(filters)) {
       const value = query.get(queryKey)?.trim();
-      if (value) params.set(column, queryKey === "ubicacion" ? `ilike.${value}*` : `eq.${value}`);
+      if (value && queryKey !== "estado_proceso") params.set(column, queryKey === "ubicacion" ? `ilike.${value}*` : `eq.${value}`);
+      if (value && queryKey === "estado_proceso" && view === "almacen" && value !== "Retirada") params.set(column, `eq.${value}`);
     }
     const published = query.get("publicado_online");
     if (published === "true" || published === "false") params.set("publicado_online", `eq.${published}`);
@@ -76,7 +80,7 @@ export async function GET(request: Request) {
     let response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
       headers: supabaseHeaders(key, { Prefer: "count=exact" }), cache: "no-store",
     });
-    if (!response.ok) {
+    if (!response.ok && !allIds) {
       params.set("select", "*,fotos:almacen_desguace_fotos(*)");
       for (const keyName of ["or", "and"]) {
         const value = params.get(keyName);
@@ -89,6 +93,10 @@ export async function GET(request: Request) {
     const contentRange = response.headers.get("content-range");
     const totalValue = contentRange?.split("/")[1];
     const piezas = await parseSupabaseResponse<PiezaDesguace[]>(response);
+    if (allIds) {
+      const total = totalValue && totalValue !== "*" ? Number(totalValue) : piezas.length;
+      return NextResponse.json({ ids: piezas.map((pieza) => pieza.id), total });
+    }
     const items = await Promise.all(piezas.map(async (pieza) => {
       const principal = (pieza.fotos || []).find((foto) => foto.es_principal) || pieza.fotos?.[0];
       return principal ? { ...pieza, fotos: [(await withPublicPhotos({ ...pieza, fotos: [principal] })).fotos![0]] } : pieza;
@@ -113,6 +121,7 @@ export async function POST(request: Request) {
 
   try {
     const input = normalizePiezaInput(await request.json());
+    if (input.estado_proceso === "Retirada") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(input);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
     if (requiresPublishValidation(input.estado_proceso)) {
