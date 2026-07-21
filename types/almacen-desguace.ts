@@ -193,6 +193,7 @@ export interface CajonDesguace {
   disponibles: number;
   porcentaje_ocupacion: number;
   lleno: boolean;
+  contenido_busqueda?: string;
   piezas?: PiezaDesguace[];
   movimientos?: MovimientoCajon[];
 }

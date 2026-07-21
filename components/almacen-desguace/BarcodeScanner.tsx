@@ -13,7 +13,7 @@ export default function BarcodeScanner({ onScan, onClose }: { onScan: (value: st
   const scanningRef = useRef(false);
   const lastDetectionRef = useRef(0);
   const [manualCode, setManualCode] = useState("");
-  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
   const [error, setError] = useState("");
 
@@ -22,8 +22,6 @@ export default function BarcodeScanner({ onScan, onClose }: { onScan: (value: st
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }
-
-  useEffect(() => () => stopCamera(), []);
 
   function finish(value: string) {
     const normalized = value.trim();
@@ -65,6 +63,18 @@ export default function BarcodeScanner({ onScan, onClose }: { onScan: (value: st
     } finally { setCameraStarting(false); }
   }
 
+  useEffect(() => {
+    // El pequeño retraso evita el doble montaje de desarrollo y conserva el
+    // primer toque del usuario como apertura directa del lector.
+    const timer = window.setTimeout(() => void startCamera(), 80);
+    return () => {
+      window.clearTimeout(timer);
+      stopCamera();
+    };
+    // La cámara debe iniciarse una sola vez al abrir el diálogo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function submitManual(event: FormEvent) {
     event.preventDefault();
     finish(manualCode);
@@ -82,7 +92,7 @@ export default function BarcodeScanner({ onScan, onClose }: { onScan: (value: st
         </section>
         {error && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">{error}</p>}
         <div className="flex items-center gap-3 text-xs text-zinc-600"><span className="h-px flex-1 bg-zinc-800" />O USA UN LECTOR<span className="h-px flex-1 bg-zinc-800" /></div>
-        <form onSubmit={submitManual} className="space-y-2"><label className="flex items-center gap-2 text-sm font-semibold text-zinc-300"><Keyboard size={17} className="text-amber-400" /> Lector USB/Bluetooth o escritura manual</label><div className="flex gap-2"><input autoFocus value={manualCode} onChange={(event) => setManualCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); finish(event.currentTarget.value); } }} placeholder="Escanea o escribe la referencia" className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 font-mono text-white focus:border-amber-500 focus:outline-none" /><button disabled={!manualCode.trim()} className="rounded-xl bg-amber-500 px-4 font-bold text-zinc-950 hover:bg-amber-400 disabled:opacity-40">Buscar</button></div><p className="text-xs text-zinc-600">Los lectores físicos normalmente escriben el código y pulsan Enter automáticamente.</p></form>
+        <form onSubmit={submitManual} className="space-y-2"><label className="flex items-center gap-2 text-sm font-semibold text-zinc-300"><Keyboard size={17} className="text-amber-400" /> Lector USB/Bluetooth o escritura manual</label><div className="flex gap-2"><input value={manualCode} onChange={(event) => setManualCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); finish(event.currentTarget.value); } }} placeholder="Escanea o escribe la referencia" className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 font-mono text-white focus:border-amber-500 focus:outline-none" /><button disabled={!manualCode.trim()} className="rounded-xl bg-amber-500 px-4 font-bold text-zinc-950 hover:bg-amber-400 disabled:opacity-40">Buscar</button></div><p className="text-xs text-zinc-600">Los lectores físicos normalmente escriben el código y pulsan Enter automáticamente.</p></form>
       </div>
     </div>
   </div>;
