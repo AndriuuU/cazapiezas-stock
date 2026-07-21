@@ -25,13 +25,14 @@ export async function PATCH(request: Request) {
       ? [...new Set(body.ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
       : [];
     if (!ids.length) return NextResponse.json({ error: "Selecciona al menos una pieza." }, { status: 400 });
-    if (ids.length > 200) return NextResponse.json({ error: "Solo se pueden modificar 200 piezas por operación." }, { status: 400 });
+    if (ids.length > 1000) return NextResponse.json({ error: "Solo se pueden modificar 1.000 piezas por operación." }, { status: 400 });
 
     const normalized = normalizePiezaInput(body.changes);
     const changes = Object.fromEntries(
       ALLOWED_FIELDS.filter((field) => field in normalized).map((field) => [field, normalized[field]])
     ) as PiezaDesguaceInput;
     if (!Object.keys(changes).length) return NextResponse.json({ error: "Elige el cambio que quieres aplicar." }, { status: 400 });
+    if (changes.estado_proceso === "Retirada" || changes.estado_proceso === "Vendida") Object.assign(changes, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(changes);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
 
@@ -40,7 +41,7 @@ export async function PATCH(request: Request) {
     const selectParams = new URLSearchParams({
       select: "*,fotos:almacen_desguace_fotos(id)",
       id: idsFilter,
-      limit: "200",
+      limit: "1000",
     });
     const selectedResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${selectParams}`, {
       headers: supabaseHeaders(key), cache: "no-store",

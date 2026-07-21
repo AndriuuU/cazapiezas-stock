@@ -25,9 +25,9 @@ export async function GET(request: Request, context: Context) {
 function actionPatch(action: unknown): PiezaDesguaceInput {
   if (action === "publicar") return { estado_proceso: "Publicada", publicado_online: true };
   if (action === "reservar") return { estado_proceso: "Reservada" };
-  if (action === "vender") return { estado_proceso: "Vendida" };
+  if (action === "vender") return { estado_proceso: "Vendida", publicado_online: false, ubicacion: null, cajon_id: null };
   if (action === "enviar") return { estado_proceso: "Enviada" };
-  if (action === "retirar") return { estado_proceso: "Retirada", publicado_online: false };
+  if (action === "retirar") return { estado_proceso: "Retirada", publicado_online: false, ubicacion: null, cajon_id: null };
   return {};
 }
 
@@ -40,6 +40,7 @@ export async function PATCH(request: Request, context: Context) {
     if (!current) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
     const raw = await request.json() as Record<string, unknown>;
     const patch = { ...normalizePiezaInput(raw), ...actionPatch(raw.action) };
+    if (patch.estado_proceso === "Retirada" || patch.estado_proceso === "Vendida") Object.assign(patch, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(patch);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
     const merged = { ...current, ...patch };

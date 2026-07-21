@@ -12,9 +12,11 @@ import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import PlacementModal from "@/components/almacen-desguace/PlacementModal";
 import ConfirmDialog from "@/components/almacen-desguace/ConfirmDialog";
 import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
+import RecambioFacilLink from "@/components/almacen-desguace/RecambioFacilLink";
 import { ESTADOS_PIEZA, ESTADOS_PROCESO, type CajonDesguace, type PiezaDesguace } from "@/types/almacen-desguace";
 
 type Action = "publicar" | "reservar" | "vender" | "enviar" | "retirar";
+type ListView = "almacen" | "vendidas" | "retiradas";
 type BulkField = "estado_pieza" | "estado_proceso" | "publicado_online";
 type Filters = {
   q: string;
@@ -42,6 +44,7 @@ const EMPTY_FILTERS: Filters = {
 
 export default function WarehouseList() {
   const [pieces, setPieces] = useState<PiezaDesguace[]>([]);
+  const [view, setView] = useState<ListView>("almacen");
   const [categories, setCategories] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -50,6 +53,7 @@ export default function WarehouseList() {
   const [totalPages, setTotalPages] = useState(1);
   const [sort, setSort] = useState("created_at.desc");
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
   const [bulkField, setBulkField] = useState<BulkField>("estado_proceso");
   const [bulkValue, setBulkValue] = useState("");
   const [loading, setLoading] = useState(true);
@@ -80,6 +84,7 @@ export default function WarehouseList() {
       params.set("page", String(page));
       params.set("page_size", String(pageSize));
       params.set("sort", sort);
+      params.set("vista", view);
       const response = await fetch(`/api/almacen-desguace?${params}`);
       const data = await response.json() as ListResponse & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo cargar el almacén.");
@@ -93,7 +98,7 @@ export default function WarehouseList() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize, sort]);
+  }, [filters, page, pageSize, sort, view]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), filters.q ? 350 : 100);
@@ -114,6 +119,15 @@ export default function WarehouseList() {
     setSuccess("");
   }
 
+  function changeView(nextView: ListView) {
+    setView(nextView);
+    setFilters((current) => ({ ...current, estado_proceso: "", ubicacion: "" }));
+    setPage(1);
+    setSelected(new Set());
+    setExpandedPanel(null);
+    setSuccess("");
+  }
+
   async function executeAction(piece: PiezaDesguace, action: Action) {
     setError("");
     setSuccess("");
@@ -131,8 +145,8 @@ export default function WarehouseList() {
       setConfirmation({
         title: retiring ? "¿Retirar esta pieza?" : "¿Marcar la pieza como vendida?",
         description: retiring
-          ? `${piece.codigo_interno} dejará de estar disponible en el flujo de venta.`
-          : `${piece.codigo_interno} cambiará al estado Vendida.`,
+          ? `${piece.codigo_interno} saldrá de Piezas almacenadas, aparecerá en Retiradas y dejará libre su ubicación${piece.cajon_id ? " y su espacio en el cajón" : ""}.`
+          : `${piece.codigo_interno} saldrá de Piezas almacenadas, aparecerá en Vendidas, dejará libre su ubicación${piece.cajon_id ? " y su espacio en el cajón" : ""}, y dejará de estar online.`,
         confirmLabel: retiring ? "Sí, retirar" : "Sí, marcar vendida",
         tone: "red",
         onConfirm: () => executeAction(piece, action),
@@ -200,6 +214,29 @@ export default function WarehouseList() {
     });
   }
 
+  async function selectAllResults() {
+    if (selected.size === total) {
+      setSelected(new Set());
+      return;
+    }
+    setSelectingAll(true); setError(""); setSuccess("");
+    try {
+      const params = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+      params.set("vista", view);
+      params.set("all_ids", "true");
+      const response = await fetch(`/api/almacen-desguace?${params}`);
+      const data = await response.json() as { ids?: number[]; total?: number; error?: string };
+      if (!response.ok) throw new Error(data.error || "No se pudieron seleccionar todas las piezas.");
+      if ((data.total || 0) > (data.ids?.length || 0)) throw new Error("Hay más de 1.000 resultados. Aplica algún filtro antes de seleccionarlos todos.");
+      setSelected(new Set(data.ids || []));
+      setSuccess(`${(data.ids || []).length} piezas seleccionadas.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron seleccionar todas las piezas.");
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
   function togglePanel(pieceId: number, type: "vehicle" | "actions") {
     setExpandedPanel((current) => current?.pieceId === pieceId && current.type === type ? null : { pieceId, type });
   }
@@ -252,8 +289,8 @@ export default function WarehouseList() {
       <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black text-white">Piezas almacenadas</h1>
-            <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} piezas encontradas en Almacén Desguace.</p>
+            <h1 className="text-2xl font-black text-white">{view === "almacen" ? "Piezas almacenadas" : view === "vendidas" ? "Piezas vendidas" : "Piezas retiradas"}</h1>
+            <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} {view === "almacen" ? "piezas disponibles en Almacén Desguace" : view === "vendidas" ? "piezas vendidas y fuera del almacenamiento" : "piezas retiradas del almacén"}.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
@@ -274,6 +311,12 @@ export default function WarehouseList() {
           </div>
         </div>
 
+        <nav className="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 sm:grid-cols-3" aria-label="Listados de piezas">
+          <button onClick={() => changeView("almacen")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "almacen" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><Warehouse size={18} /> Almacenadas</button>
+          <button onClick={() => changeView("vendidas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "vendidas" ? "bg-emerald-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><ShoppingBag size={18} /> Vendidas</button>
+          <button onClick={() => changeView("retiradas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "retiradas" ? "bg-red-500 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><PackageX size={18} /> Retiradas</button>
+        </nav>
+
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-semibold text-zinc-300">Buscar y filtrar</p>
@@ -292,7 +335,7 @@ export default function WarehouseList() {
             <div className={showMobileFilters ? "contents" : "hidden md:contents"}>
               <FilterSelect value={filters.categoria} onChange={(value) => updateFilter("categoria", value)}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
               <FilterSelect value={filters.estado_pieza} onChange={(value) => updateFilter("estado_pieza", value)}><option value="">Cualquier estado</option>{ESTADOS_PIEZA.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
-              <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
+              {view === "almacen" ? <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.filter((value) => value !== "Retirada" && value !== "Vendida").map((value) => <option key={value}>{value}</option>)}</FilterSelect> : view === "vendidas" ? <div className="flex items-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-sm font-bold text-emerald-300">Proceso: Vendida</div> : <div className="flex items-center rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold text-red-300">Proceso: Retirada</div>}
               <FilterSelect value={filters.publicado_online} onChange={(value) => updateFilter("publicado_online", value)}><option value="">Online y no online</option><option value="true">Publicadas online</option><option value="false">No publicadas</option></FilterSelect>
               <label className="relative md:col-span-2 xl:col-span-2"><MapPin className="absolute left-3 top-3 text-zinc-500" size={18} /><input value={filters.ubicacion} onChange={(event) => updateFilter("ubicacion", event.target.value.toUpperCase())} placeholder="Ubicación: E01, DESGUACE-E01..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 font-mono text-white focus:border-amber-500 focus:outline-none" /></label>
               <FilterSelect value={sort} onChange={(value) => { setSort(value); setPage(1); }}><option value="created_at.desc">Más recientes primero</option><option value="created_at.asc">Más antiguas primero</option><option value="nombre.asc">Nombre A–Z</option><option value="referencia.asc">Referencia A–Z</option><option value="ubicacion.asc">Ubicación</option><option value="precio.desc">Mayor precio</option><option value="precio.asc">Menor precio</option></FilterSelect>
@@ -305,7 +348,7 @@ export default function WarehouseList() {
           <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <div className="min-w-48">
-                <p className="font-bold text-amber-200">{selected.size} piezas seleccionadas</p>
+                <p className="font-bold text-amber-200">{selected.size.toLocaleString("es-ES")} {selected.size === total && total > 0 ? "piezas seleccionadas · selección completa" : "piezas seleccionadas"}</p>
                 <button onClick={() => setSelected(new Set())} className="text-xs text-amber-300/70 hover:text-amber-200">Cancelar selección</button>
               </div>
               <FieldLabel label="Dato que quieres modificar">
@@ -326,7 +369,7 @@ export default function WarehouseList() {
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
-            <span className="flex items-center gap-2"><span className="lg:hidden"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></span><span>Mostrando {firstResult}–{lastResult} de {total.toLocaleString("es-ES")}</span></span>
+            <span className="flex flex-wrap items-center gap-3"><span className="lg:hidden"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></span><span>Mostrando {firstResult}–{lastResult} de {total.toLocaleString("es-ES")}</span><button onClick={() => void selectAllResults()} disabled={selectingAll || !total} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-xs font-black text-amber-300 hover:bg-amber-500/10 disabled:opacity-40">{selectingAll ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}{selected.size === total && total > 0 ? "Quitar selección completa" : `Seleccionar las ${total.toLocaleString("es-ES")}`}</button></span>
             <label className="flex items-center gap-2">Filas por página<select aria-label="Filas por página" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); setSelected(new Set()); }} className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-white"><option value="10">10</option><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
           </div>
           {loading ? (
@@ -365,13 +408,13 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
     <tr className={`hover:bg-zinc-800/40 ${selected ? "bg-amber-500/5" : ""}`}>
       <td className="px-3 py-1.5"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></td>
       <td className="px-2 py-1.5"><button onClick={onPhotos} title="Ver fotografías" className="group relative block">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-zinc-700 group-hover:ring-cyan-400" /> : <span className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-800 text-zinc-600"><Camera size={16} /></span>}<Images className="absolute -bottom-1 -right-1 rounded bg-cyan-500 p-0.5 text-zinc-950" size={14} /></button></td>
-      <td className="max-w-52 px-2 py-1.5"><p className="truncate font-mono text-sm font-bold text-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</p><p className="truncate text-[11px] text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p></td>
+      <td className="max-w-52 px-2 py-1.5"><Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block truncate font-mono text-sm font-bold text-amber-300 underline decoration-amber-500/30 underline-offset-2 transition hover:text-amber-200 hover:decoration-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link><p className="truncate text-[11px] text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Ver coche" /></td>
       <td className="px-2 py-1.5 text-sm font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</td>
       <td className="px-2 py-1.5 text-zinc-400">{formatDate(piece.fecha_entrada)}</td>
       <td className="px-2 py-1.5 font-mono text-[11px] text-cyan-300">{piece.ubicacion || "Sin ubicar"}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
-      <td className="px-2 py-1.5"><OnlineBadge online={piece.publicado_online} /></td>
+      <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
     </tr>
     {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
@@ -381,7 +424,7 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
 function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onDrawer, onPhotos, onAction }: PieceItemProps) {
   const photo = piece.fotos?.[0];
   return <article className={`p-2.5 ${selected ? "bg-amber-500/5" : ""}`}>
-    <div className="flex items-start gap-2.5"><div className="pt-1"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></div><button onClick={onPhotos} className="relative shrink-0" title="Ver fotografías">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" className="h-12 w-12 rounded-lg object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-800 text-zinc-600"><Camera size={19} /></span>}<Images className="absolute -bottom-1 -right-1 rounded-full bg-cyan-500 p-1 text-zinc-950" size={17} /></button><div className="min-w-0 flex-1"><p className="truncate font-mono text-sm font-bold text-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</p><p className="truncate text-xs text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"><span className="font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</span><span className="flex items-center gap-1 text-zinc-500"><CalendarDays size={12} />{formatDate(piece.fecha_entrada)}</span><OnlineBadge online={piece.publicado_online} /></div></div></div>
+    <div className="flex items-start gap-2.5"><div className="pt-1"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></div><button onClick={onPhotos} className="relative shrink-0" title="Ver fotografías">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" className="h-12 w-12 rounded-lg object-cover" /> : <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-zinc-800 text-zinc-600"><Camera size={19} /></span>}<Images className="absolute -bottom-1 -right-1 rounded-full bg-cyan-500 p-1 text-zinc-950" size={17} /></button><div className="min-w-0 flex-1"><Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block truncate font-mono text-sm font-bold text-amber-300 underline decoration-amber-500/30 underline-offset-2 hover:text-amber-200">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link><p className="truncate text-xs text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p><div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"><span className="font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</span><span className="flex items-center gap-1 text-zinc-500"><CalendarDays size={12} />{formatDate(piece.fecha_entrada)}</span><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></div></div>
     <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg bg-zinc-950/60 px-2.5 py-2 text-[11px]"><div><span className="text-zinc-600">Ubicación</span><p className="truncate font-mono text-cyan-300">{piece.ubicacion || "Sin ubicar"}</p></div><div><span className="text-zinc-600">Estado pieza</span><p className="truncate text-zinc-300">{piece.estado_pieza || "Sin estado"}</p></div><div className="col-span-2"><span className="text-zinc-600">Proceso</span><p className="truncate text-zinc-400">{piece.estado_proceso}</p></div></div>
     <div className="mt-2 flex gap-2"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Coche" /><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></div>
     {expanded && <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</div>}
@@ -397,7 +440,10 @@ function VehicleDetails({ piece }: { piece: PiezaDesguace }) {
 }
 
 function ActionPanel({ piece, onLocate, onDrawer, onPhotos, onAction }: { piece: PiezaDesguace; onLocate: () => void; onDrawer: () => void; onPhotos: () => void; onAction: (action: Action) => void }) {
-  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label="Editar" /><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></div></div>;
+  const retired = piece.estado_proceso === "Retirada";
+  const sold = piece.estado_proceso === "Vendida";
+  const outsideStorage = retired || sold;
+  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label={outsideStorage ? "Editar o recuperar" : "Editar"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" />{!outsideStorage && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{outsideStorage && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${sold ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-red-500/20 bg-red-500/5 text-red-200"}`}>{sold ? "Esta pieza está vendida, fuera del almacenamiento y no ocupa ningún hueco. Puedes recuperarla cambiando su proceso desde Editar." : "Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar."}</p>}</div>;
 }
 
 function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, onQuery, onSelect, onClose }: { piece: PiezaDesguace; drawers: CajonDesguace[]; query: string; loading: boolean; savingId: number | null; error: string; onQuery: (value: string) => void; onSelect: (drawer: CajonDesguace) => void; onClose: () => void }) {
