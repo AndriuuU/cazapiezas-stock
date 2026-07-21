@@ -203,6 +203,7 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
   }
 
   const focusedParts = focusedLocation?.match(/^DESGUACE-E\d{2}-N(\d{2})-C(\d{2})$/);
+  const focusedElement = focusedShelf ? elements.find((element) => element.tipo === "estanteria" && element.codigo_estanteria === focusedShelf) : null;
 
   return <section id="plano-fisico" className="mx-auto w-full scroll-mt-5 overflow-hidden rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl" style={{ maxWidth: 680 }}>
     <header className="border-b border-zinc-800 bg-zinc-950/70 p-5">
@@ -256,6 +257,7 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
           const code = element.codigo_estanteria || "";
           return <ShelfShape key={element.id} element={element} shelf={shelvesByCode.get(code)} physicalLabel={DEFAULT_SHELVES.find((item) => item.codigo_estanteria === code)?.physicalLabel || code.replace("E", "")} visible={editing || !searching || visibleShelfCodes.has(code)} selected={editing ? selectedElementId === element.id : selectedCode === code} editing={editing} onSelect={() => selectShelf(code)} onPointerDown={(event) => startDrag(element, event)} />;
         })}
+        {!editing && focusedElement && focusedParts && <FocusedLocationMarker element={focusedElement} level={Number(focusedParts[1])} slot={Number(focusedParts[2])} />}
 
  </svg>
     </div>
@@ -313,6 +315,21 @@ function ShelfShape({ element, shelf, physicalLabel, visible, selected, editing,
     <text x={centerX} y={centerY - 3} textAnchor="middle" fill="#fafafa" fontSize="17" fontWeight="900">{code}</text>
     <text x={centerX} y={centerY + 18} textAnchor="middle" fill={shelf ? fill : "#a1a1aa"} fontSize="13" fontWeight="800">{shelf ? `${shelf.ocupados}/${shelf.capacidad_maxima}` : "PENDIENTE"}</text>
     <circle cx={element.x - 18} cy={centerY} r="15" fill={fill} /><text x={element.x - 18} y={centerY + 6} textAnchor="middle" fill="#09090b" fontSize="17" fontWeight="900">{physicalLabel}</text>
+  </g>;
+}
+
+function FocusedLocationMarker({ element, level, slot }: { element: ElementoPlanoAlmacen; level: number; slot: number }) {
+  const shelfX = element.x + element.ancho / 2;
+  const shelfY = element.y + element.alto / 2;
+  const markerX = Math.max(25, Math.min(985, shelfX - 95));
+  const markerY = element.y > 125 ? element.y - 95 : element.y + element.alto + 30;
+  const lineEndY = markerY < shelfY ? markerY + 70 : markerY;
+  return <g pointerEvents="none" aria-label={`Nivel ${level}, hueco ${slot}`}>
+    <line x1={shelfX} y1={shelfY} x2={markerX + 95} y2={lineEndY} stroke="#67e8f9" strokeWidth="7" strokeDasharray="10 7" />
+    <circle cx={shelfX} cy={shelfY} r="22" fill="none" stroke="#fbbf24" strokeWidth="7"><animate attributeName="r" values="20;31;20" dur="1.4s" repeatCount="indefinite" /><animate attributeName="opacity" values="1;.35;1" dur="1.4s" repeatCount="indefinite" /></circle>
+    <rect x={markerX} y={markerY} width="190" height="70" rx="16" fill="#083344" stroke="#67e8f9" strokeWidth="5" />
+    <text x={markerX + 95} y={markerY + 29} textAnchor="middle" fill="#a5f3fc" fontSize="18" fontWeight="900">UBICACIÓN EXACTA</text>
+    <text x={markerX + 95} y={markerY + 55} textAnchor="middle" fill="#ffffff" fontSize="23" fontWeight="900">NIVEL {level} · HUECO {slot}</text>
   </g>;
 }
 
