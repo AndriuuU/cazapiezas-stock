@@ -95,11 +95,27 @@ export interface HuecoPlanoAlmacen {
   hueco: number;
   disponible: boolean;
   pieza: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria"> | null;
-  cajon: Pick<CajonDesguace, "id" | "codigo" | "nombre" | "cantidad_piezas" | "capacidad_maxima" | "lleno"> | null;
+  cajon: (Pick<CajonDesguace, "id" | "codigo" | "nombre" | "cantidad_piezas" | "capacidad_maxima" | "lleno"> & { contenido_busqueda?: string }) | null;
 }
 
 export interface EstanteriaPlanoAlmacen extends EstanteriaDesguace {
   huecos: HuecoPlanoAlmacen[];
+}
+
+export type TipoElementoPlanoAlmacen = "estanteria" | "zona_suelo";
+
+export interface ElementoPlanoAlmacen {
+  id: number | string;
+  tipo: TipoElementoPlanoAlmacen;
+  codigo_estanteria: string | null;
+  nombre: string;
+  x: number;
+  y: number;
+  ancho: number;
+  alto: number;
+  rotacion: 0 | 90;
+  color: string;
+  orden: number;
 }
 
 export interface SugerenciaUbicacion {

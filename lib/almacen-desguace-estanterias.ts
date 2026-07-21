@@ -1,4 +1,4 @@
-import type { CajonDesguace, EstanteriaDesguace, EstanteriaPlanoAlmacen, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
+import type { CajonDesguace, ElementoPlanoAlmacen, EstanteriaDesguace, EstanteriaPlanoAlmacen, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 type PiezaParaSugerencia = Partial<Pick<PiezaDesguace, "categoria" | "nombre_pieza" | "descripcion" | "marca_pieza" | "marca_vehiculo" | "modelo_vehiculo">>;
@@ -80,7 +80,7 @@ export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
     limit: "5000",
   });
   const drawersParams = new URLSearchParams({ select: "*", limit: "5000" });
-  const drawerPiecesParams = new URLSearchParams({ select: "cajon_id", cajon_id: "not.is.null", limit: "10000" });
+  const drawerPiecesParams = new URLSearchParams({ select: "cajon_id,codigo_interno,nombre_pieza,referencia_principal,referencia_oem,matricula_vehiculo", cajon_id: "not.is.null", limit: "10000" });
   const [shelves, piecesResponse, drawersResponse, drawerPiecesResponse] = await Promise.all([
     getShelves(),
     fetch(`${url}/rest/v1/almacen_desguace_piezas?${piecesParams}`, {
@@ -92,12 +92,17 @@ export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
   ]);
   const pieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza" | "categoria" | "ubicacion" | "cajon_id">>>(piecesResponse);
   const drawerRows = await parseSupabaseResponse<Array<Omit<CajonDesguace, "cantidad_piezas" | "disponibles" | "porcentaje_ocupacion" | "lleno">>>(drawersResponse);
-  const drawerPieces = await parseSupabaseResponse<Array<{ cajon_id: number }>>(drawerPiecesResponse);
+  const drawerPieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "cajon_id" | "codigo_interno" | "nombre_pieza" | "referencia_principal" | "referencia_oem" | "matricula_vehiculo">>>(drawerPiecesResponse);
   const drawerCounts = new Map<number, number>();
-  drawerPieces.forEach((piece) => drawerCounts.set(piece.cajon_id, (drawerCounts.get(piece.cajon_id) || 0) + 1));
+  const drawerSearch = new Map<number, string[]>();
+  drawerPieces.forEach((piece) => {
+    if (piece.cajon_id == null) return;
+    drawerCounts.set(piece.cajon_id, (drawerCounts.get(piece.cajon_id) || 0) + 1);
+    drawerSearch.set(piece.cajon_id, [...(drawerSearch.get(piece.cajon_id) || []), piece.codigo_interno, piece.nombre_pieza || "", piece.referencia_principal || "", piece.referencia_oem || "", piece.matricula_vehiculo || ""]);
+  });
   const drawers = drawerRows.map((drawer) => {
     const count = drawerCounts.get(drawer.id) || 0;
-    return { ...drawer, cantidad_piezas: count, disponibles: Math.max(0, drawer.capacidad_maxima - count), porcentaje_ocupacion: Math.min(100, Math.round(count / drawer.capacidad_maxima * 100)), lleno: drawer.lleno_manual || count >= drawer.capacidad_maxima };
+    return { ...drawer, cantidad_piezas: count, disponibles: Math.max(0, drawer.capacidad_maxima - count), porcentaje_ocupacion: Math.min(100, Math.round(count / drawer.capacidad_maxima * 100)), lleno: drawer.lleno_manual || count >= drawer.capacidad_maxima, contenido_busqueda: (drawerSearch.get(drawer.id) || []).join(" ") };
   });
   const piecesByLocation = new Map(pieces.map((piece) => [piece.ubicacion, piece]));
   const drawersByLocation = new Map(drawers.map((drawer) => [drawer.ubicacion, drawer]));
@@ -123,9 +128,39 @@ export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
           nombre_pieza: piece.nombre_pieza,
           categoria: piece.categoria,
         } : null,
-        cajon: drawer ? { id: drawer.id, codigo: drawer.codigo, nombre: drawer.nombre, cantidad_piezas: drawer.cantidad_piezas, capacidad_maxima: drawer.capacidad_maxima, lleno: drawer.lleno } : null,
+        cajon: drawer ? { id: drawer.id, codigo: drawer.codigo, nombre: drawer.nombre, cantidad_piezas: drawer.cantidad_piezas, capacidad_maxima: drawer.capacidad_maxima, lleno: drawer.lleno, contenido_busqueda: drawer.contenido_busqueda } : null,
       };
     }),
+  }));
+}
+
+export async function getWarehouseLayout(): Promise<ElementoPlanoAlmacen[]> {
+  const { url, key } = getSupabaseApiConfig();
+  const params = new URLSearchParams({ select: "*", order: "orden.asc,id.asc", limit: "100" });
+  const response = await fetch(`${url}/rest/v1/almacen_desguace_plano_elementos?${params}`, {
+    headers: supabaseHeaders(key),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    if (response.status === 404 || body?.code === "42P01" || body?.code === "PGRST205") return [];
+    throw new Error(body?.message || body?.error || "No se pudo cargar la distribución del plano.");
+  }
+
+  const rows = await response.json() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    id: Number(row.id),
+    tipo: row.tipo === "zona_suelo" ? "zona_suelo" : "estanteria",
+    codigo_estanteria: row.codigo_estanteria ? String(row.codigo_estanteria) : null,
+    nombre: String(row.nombre || ""),
+    x: Number(row.x),
+    y: Number(row.y),
+    ancho: Number(row.ancho),
+    alto: Number(row.alto),
+    rotacion: Number(row.rotacion) === 90 ? 90 : 0,
+    color: String(row.color || "#64748b"),
+    orden: Number(row.orden) || 0,
   }));
 }
 

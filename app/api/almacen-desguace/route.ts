@@ -53,8 +53,9 @@ export async function GET(request: Request) {
       limit: String(pageSize),
       offset: String(offset),
     });
-    const view = query.get("vista") === "retiradas" ? "retiradas" : "almacen";
-    params.set("estado_proceso", view === "retiradas" ? "eq.Retirada" : "neq.Retirada");
+    const requestedView = query.get("vista");
+    const view = requestedView === "retiradas" || requestedView === "vendidas" ? requestedView : "almacen";
+    params.set("estado_proceso", view === "retiradas" ? "eq.Retirada" : view === "vendidas" ? "eq.Vendida" : "not.in.(Retirada,Vendida)");
     const search = (query.get("q") || "").trim().replace(/[,().*]/g, " ").replace(/\s+/g, " ");
     if (search) {
       const terms = search.split(" ").filter(Boolean).slice(0, 5);
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
     for (const [queryKey, column] of Object.entries(filters)) {
       const value = query.get(queryKey)?.trim();
       if (value && queryKey !== "estado_proceso") params.set(column, queryKey === "ubicacion" ? `ilike.${value}*` : `eq.${value}`);
-      if (value && queryKey === "estado_proceso" && view === "almacen" && value !== "Retirada") params.set(column, `eq.${value}`);
+      if (value && queryKey === "estado_proceso" && view === "almacen" && value !== "Retirada" && value !== "Vendida") params.set(column, `eq.${value}`);
     }
     const published = query.get("publicado_online");
     if (published === "true" || published === "false") params.set("publicado_online", `eq.${published}`);
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
 
   try {
     const input = normalizePiezaInput(await request.json());
-    if (input.estado_proceso === "Retirada") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });
+    if (input.estado_proceso === "Retirada" || input.estado_proceso === "Vendida") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(input);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
     if (requiresPublishValidation(input.estado_proceso)) {

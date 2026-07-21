@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Archive, ArrowLeft, Box, CheckCircle2, Loader2, MapPin, PackagePlus, Plus, Search, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowLeft, ArrowRight, Eye, Gauge, Loader2, MapPin, PackageOpen, PackagePlus, Plus, Search, X } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import type { CajonDesguace } from "@/types/almacen-desguace";
 
@@ -17,6 +17,11 @@ type FreeLocation = {
 
 const EMPTY_FORM = { nombre: "", descripcion: "", ubicacion: "", capacidad_maxima: "20" };
 const inputClass = "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white outline-none transition placeholder:text-zinc-600 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10";
+
+function locationParts(location: string) {
+  const match = location.match(/^DESGUACE-(E\d{2})-N(\d{2})-C(\d{2})$/);
+  return match ? { shelf: match[1], level: Number(match[2]), slot: Number(match[3]) } : null;
+}
 
 export default function DrawerManager({ initialDrawers }: { initialDrawers: CajonDesguace[] }) {
   const [drawers, setDrawers] = useState(initialDrawers);
@@ -76,10 +81,10 @@ export default function DrawerManager({ initialDrawers }: { initialDrawers: Cajo
     <ModuleHeader title="Cajones del almacén" subtitle="Varias piezas pequeñas dentro de un único hueco" />
     <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-bold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link><button onClick={() => void openForm()} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-black text-zinc-950 hover:bg-amber-400"><Plus size={18} /> Nuevo cajón</button></div>
-      <section className="grid gap-3 sm:grid-cols-3"><Summary label="Cajones" value={drawers.length} /><Summary label="Piezas dentro" value={drawers.reduce((sum, drawer) => sum + drawer.cantidad_piezas, 0)} /><Summary label="Cajones llenos" value={drawers.filter((drawer) => drawer.lleno).length} /></section>
-      <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cajón por código, nombre o ubicación..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label>
+      <section className="grid gap-3 sm:grid-cols-3"><Summary icon={<Archive />} label="Cajones" value={drawers.length} tone="amber" /><Summary icon={<PackageOpen />} label="Piezas dentro" value={drawers.reduce((sum, drawer) => sum + drawer.cantidad_piezas, 0)} tone="cyan" /><Summary icon={<Gauge />} label="Cajones llenos" value={drawers.filter((drawer) => drawer.lleno).length} tone="red" /></section>
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4"><div className="mb-3"><h2 className="font-black text-white">Localiza un cajón</h2><p className="text-sm text-zinc-500">Busca por código, contenido o ubicación física.</p></div><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ejemplo: CJ-001, sensores o E01..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label></section>
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-      {visible.length ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((drawer) => <article key={drawer.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><div className="flex items-start justify-between gap-3"><div><p className="font-mono font-black text-amber-300">{drawer.codigo}</p><h2 className="text-xl font-black text-white">{drawer.nombre}</h2><p className="font-mono text-xs text-cyan-300">{drawer.ubicacion}</p></div>{drawer.lleno ? <span className="rounded-full bg-red-500/10 px-3 py-1 text-xs font-black text-red-300">LLENO</span> : <CheckCircle2 className="text-emerald-400" />}</div><div className="mt-4"><div className="mb-1 flex justify-between text-xs text-zinc-400"><span>{drawer.cantidad_piezas} piezas</span><span>{drawer.disponibles} libres</span></div><div className="h-2 overflow-hidden rounded-full bg-zinc-800"><div className={drawer.lleno ? "h-full bg-red-500" : "h-full bg-cyan-500"} style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div></div><div className="mt-5 flex gap-2"><Link href={`/almacen-desguace/cajones/${drawer.id}`} className="flex-1 rounded-xl bg-cyan-500 px-3 py-2.5 text-center text-sm font-black text-zinc-950"><Box className="mr-1 inline" size={16} /> Abrir cajón</Link><button onClick={() => void toggleFull(drawer)} className="rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300">{drawer.lleno_manual ? "Liberar" : "Marcar lleno"}</button></div></article>)}</div> : <div className="rounded-2xl border border-dashed border-zinc-700 py-16 text-center text-zinc-500"><Archive className="mx-auto mb-3" size={46} /><p className="font-bold">No hay cajones que mostrar.</p></div>}
+      {visible.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((drawer) => <DrawerCard key={drawer.id} drawer={drawer} onToggleFull={() => void toggleFull(drawer)} />)}</div> : <div className="rounded-2xl border border-dashed border-zinc-700 py-16 text-center text-zinc-500"><Archive className="mx-auto mb-3" size={46} /><p className="font-bold">No hay cajones que mostrar.</p></div>}
     </div>
 
     {showForm && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4">
@@ -104,6 +109,43 @@ export default function DrawerManager({ initialDrawers }: { initialDrawers: Cajo
   </main>;
 }
 
-function Summary({ label, value }: { label: string; value: number }) { return <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4"><p className="text-xs uppercase text-cyan-300/70">{label}</p><p className="text-2xl font-black text-white">{value}</p></div>; }
+function DrawerCard({ drawer, onToggleFull }: { drawer: CajonDesguace; onToggleFull: () => void }) {
+  const location = locationParts(drawer.ubicacion);
+  const full = drawer.lleno;
+  const inactive = !drawer.activo;
+  const status = inactive ? "INACTIVO" : full ? "LLENO" : "DISPONIBLE";
+  const statusClass = inactive ? "border-zinc-600 bg-zinc-800 text-zinc-300" : full ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  const mapHref = location ? `/almacen-desguace/plano?estanteria=${location.shelf}&ubicacion=${encodeURIComponent(drawer.ubicacion)}#plano-fisico` : "/almacen-desguace/plano";
+
+  return <article className="group flex h-full flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-lg transition hover:-translate-y-0.5 hover:border-zinc-700 hover:shadow-cyan-950/20">
+    <header className="flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-950/35 p-5">
+      <div className="flex min-w-0 items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-300"><Archive size={22} /></span><div className="min-w-0"><p className="font-mono text-xs font-black tracking-wide text-amber-300">{drawer.codigo}</p><h2 className="truncate text-lg font-black text-white" title={drawer.nombre}>{drawer.nombre}</h2><p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{drawer.descripcion || "Sin descripción del contenido"}</p></div></div>
+      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black ${statusClass}`}>{status}</span>
+    </header>
+
+    <div className="flex flex-1 flex-col gap-4 p-5">
+      <Link href={mapHref} className="group/location flex items-center justify-between gap-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 transition hover:border-cyan-400/50 hover:bg-cyan-500/10" title="Mostrar esta ubicación en el plano">
+        <span className="flex min-w-0 items-center gap-3"><MapPin className="shrink-0 text-cyan-400" size={20} /><span className="min-w-0">{location ? <><span className="block text-sm font-black text-white">Estantería {location.shelf}</span><span className="block text-xs text-cyan-200">Nivel {location.level} · Hueco {location.slot}</span></> : <span className="block text-sm font-bold text-white">Ver ubicación</span>}<span className="block truncate font-mono text-[10px] text-zinc-600">{drawer.ubicacion}</span></span></span>
+        <ArrowRight className="shrink-0 text-cyan-500 transition group-hover/location:translate-x-1" size={18} />
+      </Link>
+
+      <div>
+        <div className="mb-2 flex items-end justify-between gap-3"><div><p className="text-xs text-zinc-500">Ocupación</p><p className="text-2xl font-black text-white">{drawer.cantidad_piezas}<span className="text-sm text-zinc-500"> / {drawer.capacidad_maxima}</span></p></div><p className={`text-sm font-black ${full ? "text-red-300" : "text-cyan-300"}`}>{drawer.porcentaje_ocupacion}%</p></div>
+        <div className="h-2.5 overflow-hidden rounded-full bg-zinc-800"><div className={`h-full rounded-full transition-all ${full ? "bg-red-500" : "bg-cyan-500"}`} style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div>
+        <p className="mt-2 text-xs text-zinc-500">{drawer.disponibles ? `${drawer.disponibles} espacios disponibles` : "Sin espacio disponible"}</p>
+      </div>
+    </div>
+
+    <footer className="grid grid-cols-[1fr_auto] gap-2 border-t border-zinc-800 bg-zinc-950/35 p-4">
+      <Link href={`/almacen-desguace/cajones/${drawer.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-cyan-400"><Eye size={18} /> Ver cajón</Link>
+      <button onClick={onToggleFull} className="min-h-11 rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300 transition hover:border-amber-500/40 hover:text-amber-200">{drawer.lleno_manual ? "Liberar" : "Marcar lleno"}</button>
+    </footer>
+  </article>;
+}
+
+function Summary({ icon, label, value, tone }: { icon: ReactNode; label: string; value: number; tone: "amber" | "cyan" | "red" }) {
+  const colors = { amber: "border-amber-500/20 bg-amber-500/5 text-amber-300", cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-300", red: "border-red-500/20 bg-red-500/5 text-red-300" };
+  return <div className={`flex items-center gap-3 rounded-2xl border p-4 ${colors[tone]}`}><span className="rounded-xl bg-black/20 p-2">{icon}</span><div><p className="text-xs uppercase tracking-wide opacity-70">{label}</p><p className="text-2xl font-black text-white">{value}</p></div></div>;
+}
 function FormSection({ number, title, description, children }: { number: string; title: string; description: string; children: ReactNode }) { return <section><div className="mb-4 flex gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 font-black text-zinc-950">{number}</span><div><h3 className="font-black text-white">{title}</h3><p className="text-sm text-zinc-500">{description}</p></div></div><div className="sm:pl-11">{children}</div></section>; }
 function FormField({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) { return <label className="block"><span className="mb-1.5 flex items-center justify-between gap-2 text-sm font-bold text-zinc-300"><span>{label}</span>{hint && <span className="text-xs font-normal text-zinc-600">{hint}</span>}</span>{children}</label>; }
