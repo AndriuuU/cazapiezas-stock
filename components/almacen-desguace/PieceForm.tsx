@@ -153,7 +153,7 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
           <Field label="Estado de la pieza"><select name="estado_pieza" defaultValue={String(value("estado_pieza"))} className={inputClass}><option value="">Sin completar</option>{ESTADOS_PIEZA.map(v => <option key={v}>{v}</option>)}</select></Field>
           <Field label="Estado del proceso"><select name="estado_proceso" defaultValue={String(value("estado_proceso") || "Pendiente de identificar")} className={inputClass}>{ESTADOS_PROCESO.map(v => <option key={v}>{v}</option>)}</select></Field>
           <Field label="Cantidad"><input name="cantidad" type="number" min="0" step="1" defaultValue={String(value("cantidad"))} className={inputClass} /></Field>
-          <LocationField initialValue={pieza?.ubicacion} formRef={formRef} />
+          <LocationField initialValue={pieza?.ubicacion} initialDrawerId={pieza?.cajon_id} initialDrawer={pieza?.cajon} formRef={formRef} />
           <Field label="Precio de coste"><input name="precio_coste" type="number" min="0" step="0.01" defaultValue={String(value("precio_coste"))} className={inputClass} /></Field>
           <Field label="Precio de venta"><input name="precio_venta" type="number" min="0" step="0.01" defaultValue={String(value("precio_venta"))} className={inputClass} /></Field>
           <Field label="Año desde"><input name="ano_desde" type="number" min="1900" max="2100" defaultValue={String(value("ano_desde"))} className={inputClass} /></Field>
