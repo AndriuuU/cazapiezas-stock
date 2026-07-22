@@ -4,9 +4,9 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, Eye, FilterX,
+  Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudUpload, Edit3, Eye, FilterX,
   History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackageCheck, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
-  SlidersHorizontal, Sparkles, Tag, Warehouse, X,
+  RotateCcw, SlidersHorizontal, Sparkles, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import PlacementModal from "@/components/almacen-desguace/PlacementModal";
@@ -19,7 +19,7 @@ import { ESTADOS_PIEZA, ESTADOS_PROCESO, type CajonDesguace, type PiezaDesguace 
 
 type Action = "publicar" | "reservar" | "vender" | "enviar" | "retirar";
 type ListView = "almacen" | "vendidas" | "retiradas";
-type BulkField = "estado_pieza" | "estado_proceso" | "publicado_online";
+type BulkField = "estado_pieza" | "estado_proceso";
 type Filters = {
   q: string;
   categoria: string;
@@ -38,6 +38,13 @@ type ListResponse = {
 };
 type ConfirmRequest = { title: string; description: string; confirmLabel: string; tone?: "amber" | "red"; onConfirm: () => void | Promise<void> };
 type ExpandedPanel = { pieceId: number; type: "vehicle" | "actions" } | null;
+type PublicationResponse = {
+  requested: number;
+  published: Array<{ id: number; codigo: string }>;
+  skipped: Array<{ id: number; codigo: string; reason: string }>;
+  failed: Array<{ id: number; codigo: string; error: string; publishedExternally?: boolean }>;
+  error?: string;
+};
 
 const EMPTY_FILTERS: Filters = {
   q: "", categoria: "", estado_pieza: "", estado_proceso: "",
@@ -60,8 +67,10 @@ export default function WarehouseList() {
   const [bulkValue, setBulkValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [assignmentPiece, setAssignmentPiece] = useState<PiezaDesguace | null>(null);
   const [locatingPiece, setLocatingPiece] = useState<PiezaDesguace | null>(null);
   const [galleryPiece, setGalleryPiece] = useState<PiezaDesguace | null>(null);
   const [galleryLoading, setGalleryLoading] = useState(false);
@@ -87,7 +96,7 @@ export default function WarehouseList() {
       params.set("page_size", String(pageSize));
       params.set("sort", sort);
       params.set("vista", view);
-      const response = await fetch(`/api/almacen-desguace?${params}`);
+      const response = await fetch(`/api/almacen-desguace?${params}`, { cache: "no-store" });
       const data = await response.json() as ListResponse & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo cargar el almacén.");
       setPieces(data.items);
@@ -141,7 +150,92 @@ export default function WarehouseList() {
     else { setSuccess(`${piece.codigo_interno} actualizado.`); void load(); }
   }
 
+  async function publishPieces(ids: number[]) {
+    setPublishing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const totals = { published: 0, skipped: 0, onlineIds: [] as number[], failures: [] as PublicationResponse["failed"] };
+      for (let index = 0; index < ids.length; index += 50) {
+        const response = await fetch("/api/almacen-desguace/recambio-facil/publicar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: ids.slice(index, index + 50) }),
+        });
+        const data = await response.json() as PublicationResponse;
+        if (!response.ok) throw new Error(data.error || "No se pudo conectar con Recambio Fácil.");
+        totals.published += data.published.length;
+        totals.skipped += data.skipped.length;
+        totals.onlineIds.push(...data.published.map((item) => item.id), ...data.skipped.map((item) => item.id));
+        totals.failures.push(...data.failed);
+      }
+      let publicationError = "";
+      let publicationSuccess = "";
+      if (totals.failures.length) {
+        const details = totals.failures.slice(0, 5).map((item) => `${item.codigo}: ${item.error}`).join("; ");
+        publicationError = `${totals.published} publicadas y ${totals.failures.length} con error. ${details}${totals.failures.length > 5 ? `; y ${totals.failures.length - 5} más` : ""}`;
+      } else {
+        publicationSuccess = totals.published
+          ? `${totals.published} pieza${totals.published === 1 ? "" : "s"} nueva${totals.published === 1 ? "" : "s"} publicada${totals.published === 1 ? "" : "s"} en Recambio Fácil${totals.skipped ? ` · ${totals.skipped} ya existía${totals.skipped === 1 ? "" : "n"} y se sincronizó${totals.skipped === 1 ? "" : "n"} como Online` : ""}.`
+          : `${totals.skipped} pieza${totals.skipped === 1 ? "" : "s"} ya existía${totals.skipped === 1 ? "" : "n"} en Recambio Fácil y se ha${totals.skipped === 1 ? "" : "n"} sincronizado como Online.`;
+      }
+      setSelected(totals.failures.length ? new Set(totals.failures.map((item) => item.id)) : new Set());
+      await load();
+      if (totals.onlineIds.length) {
+        const onlineIds = new Set(totals.onlineIds);
+        setPieces((current) => current.map((piece) => onlineIds.has(piece.id) ? { ...piece, publicado_online: true } : piece));
+      }
+      if (publicationError) setError(publicationError);
+      else setSuccess(publicationSuccess);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo publicar en Recambio Fácil.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  function confirmSelectedOnline() {
+    const selectedCount = selected.size;
+    setConfirmation({
+      title: `¿Confirmar ${selectedCount} piezas como Online?`,
+      description: "Utiliza esta opción únicamente si has comprobado que las piezas ya existen en Recambio Fácil. No se enviarán otra vez; solo se sincronizará el estado en Cazapiezas.",
+      confirmLabel: `Sí, confirmar ${selectedCount}`,
+      onConfirm: performConfirmOnline,
+    });
+  }
+
+  async function performConfirmOnline() {
+    setPublishing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/almacen-desguace/recambio-facil/confirmar-online", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      const data = await response.json() as { count?: number; error?: string };
+      if (!response.ok) throw new Error(data.error || "No se pudo confirmar el estado Online.");
+      setSelected(new Set());
+      await load();
+      setSuccess(`${data.count || 0} pieza${data.count === 1 ? "" : "s"} sincronizada${data.count === 1 ? "" : "s"} como Online sin volver a enviarla${data.count === 1 ? "" : "s"}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo confirmar el estado Online.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   function act(piece: PiezaDesguace, action: Action) {
+    if (action === "publicar") {
+      setConfirmation({
+        title: "¿Publicar esta pieza en Recambio Fácil?",
+        description: `${piece.codigo_interno} se enviará ahora a Recambio Fácil. Solo aparecerá como Online si la plataforma confirma que se ha insertado correctamente.`,
+        confirmLabel: "Sí, publicar",
+        onConfirm: () => publishPieces([piece.id]),
+      });
+      return;
+    }
     if (action === "vender" || action === "retirar") {
       const retiring = action === "retirar";
       setConfirmation({
@@ -248,7 +342,7 @@ export default function WarehouseList() {
       setError("Selecciona piezas y el valor que quieres aplicar.");
       return;
     }
-    const value = bulkField === "publicado_online" ? bulkValue === "true" : bulkValue;
+    const value = bulkValue;
     const selectedCount = selected.size;
     setConfirmation({
       title: `¿Modificar ${selectedCount} piezas?`,
@@ -258,7 +352,7 @@ export default function WarehouseList() {
     });
   }
 
-  async function performBulkChange(value: string | boolean) {
+  async function performBulkChange(value: string) {
     setBulkLoading(true);
     setError("");
     setSuccess("");
@@ -276,6 +370,38 @@ export default function WarehouseList() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo aplicar el cambio.");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  function restoreSelectedRetired() {
+    const selectedCount = selected.size;
+    setConfirmation({
+      title: `¿Devolver ${selectedCount} piezas al almacén?`,
+      description: "Volverán a Piezas almacenadas como Pendientes de comprobar. Seguirán sin ubicación y no online para que puedas revisarlas y colocarlas de nuevo.",
+      confirmLabel: `Sí, devolver ${selectedCount}`,
+      onConfirm: performRestoreRetired,
+    });
+  }
+
+  async function performRestoreRetired() {
+    setBulkLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/almacen-desguace/bulk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected], changes: { estado_proceso: "Pendiente de comprobar" } }),
+      });
+      const data = await response.json() as { count?: number; error?: string };
+      if (!response.ok) throw new Error(data.error || "No se pudieron recuperar las piezas.");
+      setSelected(new Set());
+      await load();
+      setSuccess(`${data.count || 0} pieza${data.count === 1 ? "" : "s"} devuelta${data.count === 1 ? "" : "s"} a Piezas almacenadas. Ahora puedes asignarles una ubicación.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron recuperar las piezas.");
     } finally {
       setBulkLoading(false);
     }
@@ -348,6 +474,8 @@ export default function WarehouseList() {
 
         {selected.size > 0 && (
           <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+            {view === "almacen" && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 font-black text-cyan-200"><CloudUpload size={19} /> Publicar en Recambio Fácil</p><p className="mt-1 text-xs text-cyan-100/70">Envía las piezas seleccionadas o confirma su estado si ya existen en la plataforma.</p></div><div className="flex flex-col gap-2 sm:flex-row"><button onClick={confirmSelectedOnline} disabled={publishing} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-black text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"><CheckCircle2 size={18} /> Ya existen · marcar Online</button><button onClick={() => setConfirmation({ title: `¿Publicar ${selected.size} piezas en Recambio Fácil?`, description: "Se enviarán en lotes de hasta 10 piezas. Solo se marcarán como Online los lotes que Recambio Fácil confirme correctamente.", confirmLabel: `Sí, publicar ${selected.size}`, onConfirm: () => publishPieces([...selected]) })} disabled={publishing} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 font-black text-zinc-950 hover:bg-cyan-400 disabled:opacity-50">{publishing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />} Publicar {selected.size}</button></div></div>}
+            {view === "retiradas" && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 font-black text-emerald-200"><RotateCcw size={19} /> Devolver al almacén</p><p className="mt-1 text-xs text-emerald-100/70">Recupera las piezas retiradas para revisarlas y ubicarlas de nuevo.</p></div><button onClick={restoreSelectedRetired} disabled={bulkLoading} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{bulkLoading ? <Loader2 className="animate-spin" size={18} /> : <RotateCcw size={18} />} Devolver {selected.size}</button></div>}
             <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
               <div className="min-w-48">
                 <p className="font-bold text-amber-200">{selected.size.toLocaleString("es-ES")} {selected.size === total && total > 0 ? "piezas seleccionadas · selección completa" : "piezas seleccionadas"}</p>
@@ -355,7 +483,7 @@ export default function WarehouseList() {
               </div>
               <FieldLabel label="Dato que quieres modificar">
                 <select value={bulkField} onChange={(event) => { setBulkField(event.target.value as BulkField); setBulkValue(""); }} className="bulk-input">
-                  <option value="estado_pieza">Estado de la pieza</option><option value="estado_proceso">Estado del proceso</option><option value="publicado_online">Publicación online</option>
+                  <option value="estado_pieza">Estado de la pieza</option><option value="estado_proceso">Estado del proceso</option>
                 </select>
               </FieldLabel>
               <FieldLabel label="Nuevo valor"><BulkValue field={bulkField} value={bulkValue} onChange={setBulkValue} /></FieldLabel>
@@ -366,8 +494,8 @@ export default function WarehouseList() {
           </section>
         )}
 
-        {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
-        {success && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300">{success}</div>}
+        {error && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto flex max-h-56 max-w-2xl items-start justify-between gap-3 overflow-y-auto rounded-2xl border border-red-400/40 bg-red-950/95 p-4 text-sm font-semibold text-red-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{error}</span><button onClick={() => setError("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-red-300 hover:bg-red-500/20 hover:text-white"><X size={18} /></button></div>}
+        {success && <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto flex max-w-2xl items-start justify-between gap-3 rounded-2xl border border-emerald-400/40 bg-emerald-950/95 p-4 text-sm font-semibold text-emerald-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{success}</span><button onClick={() => setSuccess("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-emerald-300 hover:bg-emerald-500/20 hover:text-white"><X size={18} /></button></div>}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
@@ -380,24 +508,25 @@ export default function WarehouseList() {
             <div className="py-16 text-center"><Warehouse className="mx-auto mb-3 text-zinc-700" size={44} /><p className="font-semibold text-zinc-300">No hay piezas con estos filtros.</p><button onClick={clearFilters} className="mt-3 text-sm text-amber-400 hover:text-amber-300">Quitar filtros</button></div>
           ) : <>
             <div className="divide-y divide-zinc-800 lg:hidden">
-              {pieces.map((piece) => <PieceCard key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}
+              {pieces.map((piece) => <PieceCard key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setAssignmentPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}
             </div>
             <div className="hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[1120px] text-left text-xs">
                 <thead className="bg-zinc-950 uppercase tracking-wide text-zinc-500"><tr><th className="px-3 py-2"><PrettyCheckbox checked={allPageSelected} onChange={togglePage} label="Seleccionar esta página" /></th>{["Fotos", "Referencia", "Coche", "Precio", "Fecha", "Ubicación", "Estados", "Online", "Acciones"].map((value) => <th key={value} className="px-2 py-2">{value}</th>)}</tr></thead>
-                <tbody className="divide-y divide-zinc-800">{pieces.map((piece) => <PieceRow key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setLocatingPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}</tbody>
+                <tbody className="divide-y divide-zinc-800">{pieces.map((piece) => <PieceRow key={piece.id} piece={piece} selected={selected.has(piece.id)} expanded={expandedPanel?.pieceId === piece.id ? expandedPanel.type : null} onToggle={() => togglePiece(piece.id)} onPanel={(type) => togglePanel(piece.id, type)} onLocate={() => setAssignmentPiece(piece)} onDrawer={() => void openDrawerPicker(piece)} onPhotos={() => void openGallery(piece)} onAction={(action) => void act(piece, action)} />)}</tbody>
               </table>
             </div>
           </>}
           <Pagination page={page} totalPages={totalPages} onPage={setPage} />
         </section>
       </div>
+      {assignmentPiece && <StorageAssignmentModal piece={assignmentPiece} onClose={() => setAssignmentPiece(null)} onShelf={() => { const piece = assignmentPiece; setAssignmentPiece(null); setLocatingPiece(piece); }} onDrawer={() => { const piece = assignmentPiece; setAssignmentPiece(null); void openDrawerPicker(piece); }} />}
       {locatingPiece && <PlacementModal piece={locatingPiece} onClose={() => setLocatingPiece(null)} onPlaced={(message) => { setSuccess(message); setLocatingPiece(null); void load(); }} />}
       {galleryPiece && <PhotoGalleryModal key={galleryPiece.id} piece={galleryPiece} loading={galleryLoading} onClose={() => setGalleryPiece(null)} />}
       {drawerPiece && <DrawerPickerModal piece={drawerPiece} drawers={drawerOptions} query={drawerQuery} loading={drawerLoading} savingId={drawerSaving} error={drawerError} onQuery={setDrawerQuery} onSelect={(drawer) => void assignDrawer(drawer)} onClose={() => setDrawerPiece(null)} />}
       {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onConfirm={confirmation.onConfirm} onClose={() => setConfirmation(null)} />}
       {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { updateFilter("q", value); setScannerOpen(false); setSuccess(`Código leído: ${value}`); }} />}
-      <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); }`}</style>
+      <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); } [aria-label^="Asignar ubicación"] button.group { transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; } [aria-label^="Asignar ubicación"] button.group > span:first-child { transition: transform 180ms ease; } [aria-label^="Asignar ubicación"] .grid > button.group:first-child:hover { transform: translateY(-2px); border-color: rgb(52 211 153); background: rgba(16, 185, 129, 0.16); box-shadow: 0 12px 28px rgba(6, 78, 59, 0.28); } [aria-label^="Asignar ubicación"] .grid > button.group:last-child:hover { transform: translateY(-2px); border-color: rgb(34 211 238); background: rgba(6, 182, 212, 0.16); box-shadow: 0 12px 28px rgba(8, 51, 68, 0.3); } [aria-label^="Asignar ubicación"] button.group:hover > span:first-child { transform: scale(1.1); } [aria-label^="Asignar ubicación"] button.group:focus-visible { outline: 2px solid rgb(251 191 36); outline-offset: 3px; }`}</style>
     </main>
   );
 }
@@ -414,7 +543,7 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Ver coche" /></td>
       <td className="px-2 py-1.5 text-sm font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</td>
       <td className="px-2 py-1.5 text-zinc-400">{formatDate(piece.fecha_entrada)}</td>
-      <td className="px-2 py-1.5"><WarehouseLocationLink location={piece.ubicacion} compact /></td>
+      <td className="px-2 py-1.5">{piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button>}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
       <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
@@ -458,7 +587,11 @@ function ActionPanel({ piece, onLocate, onDrawer, onPhotos, onAction }: { piece:
   const retired = piece.estado_proceso === "Retirada";
   const sold = piece.estado_proceso === "Vendida";
   const outsideStorage = retired || sold;
-  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label={outsideStorage ? "Editar o recuperar" : "Editar"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" />{!outsideStorage && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Ubicar" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Guardar en cajón"} /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><ActionButton onClick={() => onAction("publicar")} icon={<Tag />} label="Publicar" /><ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{outsideStorage && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${sold ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-red-500/20 bg-red-500/5 text-red-200"}`}>{sold ? "Esta pieza está vendida, fuera del almacenamiento y no ocupa ningún hueco. Puedes recuperarla cambiando su proceso desde Editar." : "Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar."}</p>}</div>;
+  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label={outsideStorage ? "Editar o recuperar" : "Editar"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" />{!outsideStorage && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Asignar ubicación" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Cajón directo"} /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" />{!piece.publicado_online && <ActionButton onClick={() => onAction("publicar")} icon={<CloudUpload />} label="Publicar en R/F" />}<ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{outsideStorage && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${sold ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-red-500/20 bg-red-500/5 text-red-200"}`}>{sold ? "Esta pieza está vendida, fuera del almacenamiento y no ocupa ningún hueco. Puedes recuperarla cambiando su proceso desde Editar." : "Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar."}</p>}</div>;
+}
+
+function StorageAssignmentModal({ piece, onClose, onShelf, onDrawer }: { piece: PiezaDesguace; onClose: () => void; onShelf: () => void; onDrawer: () => void }) {
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div role="dialog" aria-modal="true" aria-label={`Asignar ubicación a ${piece.codigo_interno}`} className="w-full max-w-xl rounded-t-3xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl sm:rounded-3xl sm:p-6"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold text-amber-300">{piece.referencia_principal || piece.codigo_interno}</p><h2 className="mt-1 text-xl font-black text-white">¿Dónde quieres guardar la pieza?</h2><p className="mt-1 text-sm text-zinc-500">Elige según el tamaño y el tipo de almacenamiento.</p></div><button onClick={onClose} aria-label="Cerrar" className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"><X /></button></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><button onClick={onShelf} className="group rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 text-left hover:bg-emerald-500/10"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-zinc-950"><Warehouse size={24} /></span><strong className="mt-4 block text-lg text-white">Estantería</strong><span className="mt-1 block text-sm leading-5 text-zinc-400">Para piezas grandes. La pieza ocupará un hueco completo.</span></button><button onClick={onDrawer} className="group rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-5 text-left hover:bg-cyan-500/10"><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500 text-zinc-950"><Archive size={24} /></span><strong className="mt-4 block text-lg text-white">Cajón</strong><span className="mt-1 block text-sm leading-5 text-zinc-400">Para piezas pequeñas. Compartirá la ubicación del cajón.</span></button></div></div></div>;
 }
 
 function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, onQuery, onSelect, onClose }: { piece: PiezaDesguace; drawers: CajonDesguace[]; query: string; loading: boolean; savingId: number | null; error: string; onQuery: (value: string) => void; onSelect: (drawer: CajonDesguace) => void; onClose: () => void }) {
@@ -467,17 +600,17 @@ function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, on
   const recommendation = recomendarCajon(piece, drawers);
   const showRecommendation = !term && recommendation;
   const listedDrawers = showRecommendation ? visible.filter((drawer) => drawer.id !== recommendation.cajon.id) : visible;
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div role="dialog" aria-modal="true" aria-label={`Guardar ${piece.codigo_interno} en un cajón`} className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-900 shadow-2xl sm:rounded-3xl">
-      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4 sm:px-6"><div className="flex gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-500 text-zinc-950"><PackagePlus size={22} /></span><div><h2 className="text-xl font-black text-white">{piece.cajon_id ? "Cambiar de cajón" : "Guardar en un cajón"}</h2><p className="mt-0.5 text-sm text-zinc-400"><span className="font-mono font-bold text-amber-300">{piece.referencia_principal || piece.codigo_interno}</span> · {piece.nombre_pieza || "Pieza sin nombre"}</p></div></div><button onClick={onClose} aria-label="Cerrar" className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"><X /></button></header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div role="dialog" aria-modal="true" aria-label={`Guardar ${piece.codigo_interno} en un cajón`} style={{ height: "min(760px, calc(100dvh - 24px))" }} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl sm:rounded-3xl">
+      <header className="relative flex shrink-0 items-start gap-3 border-b border-zinc-800 bg-zinc-900 px-4 py-3 pr-16 sm:px-5 sm:py-4 sm:pr-16"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500 text-zinc-950"><PackagePlus size={20} /></span><div className="min-w-0 flex-1"><h2 className="text-lg font-black text-white sm:text-xl">{piece.cajon_id ? "Cambiar de cajón" : "Elegir un cajón"}</h2><p className="mt-0.5 break-words text-xs leading-5 text-zinc-400 sm:text-sm"><span className="font-mono font-bold text-amber-300">{piece.referencia_principal || piece.codigo_interno}</span><span className="mx-1.5 text-zinc-600">·</span>{piece.nombre_pieza || "Pieza sin nombre"}</p></div><button onClick={onClose} aria-label="Cerrar" title="Cerrar" className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-300 shadow-lg hover:border-red-400/50 hover:bg-red-500/10 hover:text-white"><X size={22} /></button></header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 sm:p-6">
         {piece.cajon && <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"><Archive className="text-amber-300" /><div><p className="text-xs text-zinc-500">Cajón actual</p><p className="font-bold text-white">{piece.cajon.codigo} · {piece.cajon.nombre}</p><p className="font-mono text-xs text-zinc-500">{piece.cajon.ubicacion}</p></div></div>}
         {error && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-        {showRecommendation && <section className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-500/10"><div className="flex items-center gap-2 border-b border-emerald-500/20 px-4 py-3 text-emerald-200"><Sparkles size={18} /><p className="text-sm font-black uppercase tracking-wide">Cajón recomendado</p></div><div className="grid gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-center"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-amber-300">{recommendation.cajon.codigo}</span><span className="rounded-full bg-black/20 px-2 py-1 text-[10px] font-bold text-emerald-200">{recommendation.cajon.cantidad_piezas}/{recommendation.cajon.capacidad_maxima}</span></div><h3 className="text-lg font-black text-white">{recommendation.cajon.nombre}</h3><p className="mt-1 font-mono text-xs text-cyan-300">{recommendation.cajon.ubicacion}</p><div className="mt-3 flex flex-wrap gap-1.5">{recommendation.motivos.map((reason) => <span key={reason} className="rounded-lg border border-emerald-500/20 bg-black/15 px-2 py-1 text-xs text-emerald-100">{reason}</span>)}</div></div><button onClick={() => onSelect(recommendation.cajon)} disabled={savingId !== null} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{savingId === recommendation.cajon.id ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}{piece.cajon_id ? "Trasladar al recomendado" : "Guardar en el recomendado"}</button></div></section>}
+        {showRecommendation && <section className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-500/10"><div className="flex items-center gap-2 border-b border-emerald-500/20 px-4 py-2.5 text-emerald-200"><Sparkles size={17} /><p className="text-xs font-black uppercase tracking-wide">Cajón recomendado</p></div><div className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-amber-300">{recommendation.cajon.codigo}</span><span className="rounded-full bg-black/20 px-2 py-1 text-[10px] font-bold text-emerald-200">{recommendation.cajon.cantidad_piezas}/{recommendation.cajon.capacidad_maxima}</span></div><h3 className="mt-1 whitespace-normal break-words text-base font-black leading-5 text-white sm:text-lg">{recommendation.cajon.nombre}</h3><p className="mt-1 font-mono text-xs text-cyan-300">{recommendation.cajon.ubicacion}</p><div className="mt-2 flex flex-wrap gap-1.5">{recommendation.motivos.map((reason) => <span key={reason} className="rounded-lg border border-emerald-500/20 bg-black/15 px-2 py-1 text-[11px] text-emerald-100">{reason}</span>)}</div></div><button onClick={() => onSelect(recommendation.cajon)} disabled={savingId !== null} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{savingId === recommendation.cajon.id ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}{piece.cajon_id ? "Trasladar aquí" : "Guardar aquí"}</button></div></section>}
         <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input autoFocus value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar otro cajón por código, nombre o ubicación..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label>
-        {loading ? <div className="flex items-center justify-center gap-2 py-16 text-zinc-400"><Loader2 className="animate-spin text-cyan-400" /> Buscando cajones con espacio...</div> : listedDrawers.length ? <><p className="mb-2 mt-5 text-xs font-black uppercase tracking-wide text-zinc-500">{showRecommendation ? "Otros cajones disponibles" : "Cajones disponibles"}</p><div className="grid gap-3 sm:grid-cols-2">{listedDrawers.map((drawer) => {
+        {loading ? <div className="flex items-center justify-center gap-2 py-12 text-zinc-400"><Loader2 className="animate-spin text-cyan-400" /> Buscando cajones con espacio...</div> : listedDrawers.length ? <><p className="mb-3 mt-5 px-1 text-xs font-black uppercase tracking-wide text-zinc-500">{showRecommendation ? "Otros cajones disponibles" : "Cajones disponibles"}</p><div className="grid gap-3">{listedDrawers.map((drawer) => {
           const current = drawer.id === piece.cajon_id;
-          return <article key={drawer.id} className={`rounded-2xl border p-4 ${current ? "border-amber-500/40 bg-amber-500/5" : "border-zinc-700 bg-zinc-950"}`}><div className="flex items-start justify-between gap-2"><div><p className="font-mono text-sm font-black text-amber-300">{drawer.codigo}</p><h3 className="font-black text-white">{drawer.nombre}</h3><p className="mt-1 font-mono text-xs text-cyan-300">{drawer.ubicacion}</p></div><span className="rounded-full bg-zinc-800 px-2 py-1 text-xs font-bold text-zinc-300">{drawer.cantidad_piezas}/{drawer.capacidad_maxima}</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-800"><div className="h-full bg-cyan-500" style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div><button onClick={() => onSelect(drawer)} disabled={current || savingId !== null} className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-black ${current ? "border border-amber-500/30 text-amber-300" : "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"} disabled:opacity-50`}>{savingId === drawer.id ? <Loader2 className="animate-spin" size={16} /> : current ? <CheckCircle2 size={16} /> : <PackagePlus size={16} />}{current ? "Ya está en este cajón" : piece.cajon_id ? "Trasladar aquí" : "Guardar aquí"}</button></article>;
+          return <article key={drawer.id} className={`overflow-hidden rounded-2xl border ${current ? "border-amber-500/40 bg-amber-500/5" : "border-zinc-700 bg-zinc-950"}`}><div className="p-4 sm:p-5"><div className="flex flex-wrap items-center gap-2"><p className="font-mono text-sm font-black text-amber-300">{drawer.codigo}</p><span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{drawer.cantidad_piezas}/{drawer.capacidad_maxima}</span></div><h3 className="mt-2 whitespace-normal break-words text-base font-black leading-6 text-white sm:text-lg">{drawer.nombre}</h3><p className="mt-1.5 break-all font-mono text-xs text-cyan-300">{drawer.ubicacion}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800"><div className="h-full bg-cyan-500" style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div><button onClick={() => onSelect(drawer)} disabled={current || savingId !== null} className={`mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black ${current ? "border border-amber-500/30 text-amber-300" : "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"} disabled:opacity-50`}>{savingId === drawer.id ? <Loader2 className="animate-spin" size={17} /> : current ? <CheckCircle2 size={17} /> : <PackagePlus size={17} />}{current ? "Este es el cajón actual" : piece.cajon_id ? "Trasladar a este cajón" : "Guardar en este cajón"}</button></div></article>;
         })}</div></> : !showRecommendation && <div className="py-14 text-center"><Archive className="mx-auto mb-3 text-zinc-700" size={44} /><p className="font-bold text-zinc-300">No hay cajones disponibles.</p><p className="mt-1 text-sm text-zinc-500">Crea un cajón o libera espacio en uno existente.</p><Link href="/almacen-desguace/cajones" className="mt-4 inline-flex rounded-xl border border-cyan-500/30 px-4 py-2.5 font-bold text-cyan-300">Gestionar cajones</Link></div>}
       </div>
     </div>
@@ -503,7 +636,6 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
 function BulkValue({ field, value, onChange }: { field: BulkField; value: string; onChange: (value: string) => void }) {
   if (field === "estado_pieza") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona estado</option>{ESTADOS_PIEZA.map((item) => <option key={item}>{item}</option>)}</select>;
   if (field === "estado_proceso") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona proceso</option>{ESTADOS_PROCESO.map((item) => <option key={item}>{item}</option>)}</select>;
-  if (field === "publicado_online") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona opción</option><option value="true">Sí, publicada online</option><option value="false">No publicada online</option></select>;
   return null;
 }
 

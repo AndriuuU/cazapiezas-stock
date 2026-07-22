@@ -1,0 +1,155 @@
+import { NextResponse } from "next/server";
+import { withPublicPhotos } from "@/lib/almacen-desguace-data";
+import { buildCatPayload, getRecambioFacilConfig, insertCatPiecesBatch, validateCatPiece, type CatBatchItemResponse } from "@/lib/recambio-facil-api";
+import { protectApiOrPostmanRequest } from "@/lib/request-security";
+import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
+import type { PiezaDesguace } from "@/types/almacen-desguace";
+
+type PublicationResult = { id: number; codigo: string; reason?: string; error?: string; publishedExternally?: boolean };
+
+function normalizeIds(body: { id?: unknown; ids?: unknown }) {
+  const source = Array.isArray(body.ids) ? body.ids : body.id === undefined ? [] : [body.id];
+  return [...new Set(source.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+async function markOnline(pieces: PiezaDesguace[], url: string, key: string) {
+  const idsFilter = `in.(${pieces.map((piece) => piece.id).join(",")})`;
+  const updateParams = new URLSearchParams({ id: idsFilter, select: "id" });
+  const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {
+    method: "PATCH",
+    headers: supabaseHeaders(key, { Prefer: "return=representation" }),
+    body: JSON.stringify({ publicado_online: true }),
+  });
+  if (!response.ok) throw new Error((await response.text()).slice(0, 250));
+  const updated = await response.json() as Array<{ id: number }>;
+  if (updated.length !== pieces.length) throw new Error("No se pudieron confirmar todas las piezas en la base de datos.");
+}
+
+export async function POST(request: Request) {
+  const guard = await protectApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-publish", limit: 20, windowMs: 60_000 });
+  if (guard) return guard;
+
+  try {
+    const ids = normalizeIds(await request.json() as { id?: unknown; ids?: unknown });
+    if (!ids.length) return NextResponse.json({ error: "Selecciona al menos una pieza." }, { status: 400 });
+    if (ids.length > 50) return NextResponse.json({ error: "Se pueden publicar hasta 50 piezas por petición." }, { status: 400 });
+
+    const recambioConfig = getRecambioFacilConfig();
+    if (!recambioConfig.apiKey) return NextResponse.json({ error: "Falta configurar RECAMBIO_FACIL_API_KEY." }, { status: 500 });
+    const { url, key } = getSupabaseApiConfig();
+    const selectParams = new URLSearchParams({
+      select: "*,fotos:almacen_desguace_fotos(*)",
+      id: `in.(${ids.join(",")})`,
+      limit: "50",
+    });
+    const selectedResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${selectParams}`, {
+      headers: supabaseHeaders(key), cache: "no-store",
+    });
+    const selected = await parseSupabaseResponse<PiezaDesguace[]>(selectedResponse);
+    const byId = new Map(selected.map((piece) => [piece.id, piece]));
+    const missingIds = ids.filter((id) => !byId.has(id));
+    if (missingIds.length) return NextResponse.json({ error: "Alguna pieza seleccionada ya no existe. Actualiza el listado." }, { status: 409 });
+
+    const pieces = await Promise.all(ids.map((id) => withPublicPhotos(byId.get(id)!)));
+    const published: PublicationResult[] = [];
+    const skipped: PublicationResult[] = [];
+    const failed: PublicationResult[] = [];
+    const ready: PiezaDesguace[] = [];
+
+    for (const piece of pieces) {
+      if (piece.publicado_online) {
+        skipped.push({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba online." });
+        continue;
+      }
+      if (piece.estado_proceso === "Vendida" || piece.estado_proceso === "Retirada") {
+        failed.push({ id: piece.id, codigo: piece.codigo_interno, error: `La pieza está ${piece.estado_proceso.toLowerCase()} y no se puede publicar.` });
+        continue;
+      }
+      const missing = validateCatPiece(piece, recambioConfig);
+      if (missing.length) {
+        failed.push({ id: piece.id, codigo: piece.codigo_interno, error: `Faltan: ${missing.join(", ")}.` });
+        continue;
+      }
+      ready.push(piece);
+    }
+
+    for (let index = 0; index < ready.length; index += 10) {
+        const batch = ready.slice(index, index + 10);
+        try {
+          const batchResponse = await insertCatPiecesBatch(batch, recambioConfig);
+          const responseItems = Array.isArray(batchResponse.body) ? batchResponse.body as CatBatchItemResponse[] : [];
+          const byExternalCode = new Map(responseItems.map((item) => [String(item.Pieza), item]));
+          const created: PiezaDesguace[] = [];
+          const alreadyInserted: PiezaDesguace[] = [];
+
+          for (const piece of batch) {
+            const payload = buildCatPayload(piece, recambioConfig);
+            const item = byExternalCode.get(payload.Codigo);
+            if (!responseItems.length && batchResponse.status === 200) {
+              created.push(piece);
+            } else if (item?.Estado === 200) {
+              created.push(piece);
+            } else if (item && /ya est[aá] insertad/i.test(item.Mensaje || "")) {
+              alreadyInserted.push(piece);
+            } else {
+              failed.push({
+                id: piece.id,
+                codigo: piece.codigo_interno,
+                error: `${item?.Mensaje || "Recambio Fácil no devolvió el resultado de esta pieza."} · Código enviado: ${payload.Codigo} · Referencia enviada: ${payload.Referencia || "sin referencia"}`,
+              });
+            }
+          }
+
+          const accepted = [...created, ...alreadyInserted];
+          if (accepted.length) {
+            try {
+              await markOnline(accepted, url, key);
+              published.push(...created.map((piece) => ({ id: piece.id, codigo: piece.codigo_interno })));
+              skipped.push(...alreadyInserted.map((piece) => ({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba insertada en Recambio Fácil; se ha sincronizado como Online." })));
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : "Error desconocido al actualizar la base de datos.";
+              failed.push(...accepted.map((piece) => ({ id: piece.id, codigo: piece.codigo_interno, error: `Publicada en Recambio Fácil, pero no se pudo marcar online: ${detail}`, publishedExternally: true })));
+            }
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Error desconocido al publicar el lote.";
+          if (batch.length > 1 && /batch respondi[oó] 500/i.test(detail)) {
+            for (const piece of batch) {
+              const payload = buildCatPayload(piece, recambioConfig);
+              try {
+                const retry = await insertCatPiecesBatch([piece], recambioConfig);
+                const items = Array.isArray(retry.body) ? retry.body as CatBatchItemResponse[] : [];
+                const item = items.find((candidate) => String(candidate.Pieza) === payload.Codigo);
+                const createdNow = (!items.length && retry.status === 200) || item?.Estado === 200;
+                const existed = Boolean(item && /ya est[aá] insertad/i.test(item.Mensaje || ""));
+                if (!createdNow && !existed) {
+                  failed.push({ id: piece.id, codigo: piece.codigo_interno, error: `${item?.Mensaje || "Recambio Fácil no devolvió el resultado de esta pieza."} · Código enviado: ${payload.Codigo} · Referencia enviada: ${payload.Referencia || "sin referencia"}` });
+                  continue;
+                }
+                try {
+                  await markOnline([piece], url, key);
+                  if (createdNow) published.push({ id: piece.id, codigo: piece.codigo_interno });
+                  else skipped.push({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba insertada en Recambio Fácil; se ha sincronizado como Online." });
+                } catch (databaseError) {
+                  const databaseDetail = databaseError instanceof Error ? databaseError.message : "Error desconocido al actualizar la base de datos.";
+                  failed.push({ id: piece.id, codigo: piece.codigo_interno, error: `Publicada en Recambio Fácil, pero no se pudo marcar online: ${databaseDetail}`, publishedExternally: true });
+                }
+              } catch (retryError) {
+                const retryDetail = retryError instanceof Error ? retryError.message : "Error desconocido al reintentar individualmente.";
+                failed.push({ id: piece.id, codigo: piece.codigo_interno, error: `${retryDetail} · Código enviado: ${payload.Codigo} · Referencia enviada: ${payload.Referencia || "sin referencia"}` });
+              }
+            }
+            continue;
+          }
+          failed.push(...batch.map((piece) => {
+            const payload = buildCatPayload(piece, recambioConfig);
+            return { id: piece.id, codigo: piece.codigo_interno, error: `${detail} · Código enviado: ${payload.Codigo} · Referencia enviada: ${payload.Referencia || "sin referencia"}` };
+          }));
+        }
+    }
+
+    return NextResponse.json({ requested: ids.length, published, skipped, failed }, { status: failed.length ? 207 : 200 });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudieron publicar las piezas en Recambio Fácil." }, { status: 500 });
+  }
+}

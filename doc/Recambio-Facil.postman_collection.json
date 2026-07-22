@@ -1,0 +1,123 @@
+{
+  "info": {
+    "_postman_id": "65c33162-20c8-4f96-aee0-c40c561c3699",
+    "name": "Cazapiezas - Recambio Fácil CAT",
+    "description": "Pruebas de publicación CAT desde Cazapiezas y directamente contra Recambio Fácil.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "app_url", "value": "http://localhost:3000" },
+    { "key": "postman_token", "value": "" },
+    { "key": "pieza_id", "value": "1" },
+    { "key": "recambio_api_url", "value": "https://apipre.recambio.recambiofacil.com" },
+    { "key": "idcliente", "value": "31172" },
+    { "key": "codigo_prueba", "value": "" },
+    { "key": "codigo_prueba_2", "value": "" },
+    { "key": "id_pedido", "value": "" },
+    { "key": "id_envio", "value": "" },
+    { "key": "recambio_api_key", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Publicar una pieza desde Cazapiezas",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{postman_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": {{pieza_id}}\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{app_url}}/api/almacen-desguace/recambio-facil/publicar",
+        "description": "Publica una o varias piezas almacenadas y solo las marca Online después de una respuesta correcta de Recambio Fácil."
+      }
+    },
+    {
+      "name": "Prueba directa - POST CAT",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('codigo_prueba', String(Date.now()).slice(-9));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Codigo\": \"{{codigo_prueba}}\",\n  \"Idcliente\": {{idcliente}},\n  \"Descripcion\": \"Bomba de agua - PRUEBA POSTMAN\",\n  \"Precio\": 50,\n  \"Referencia\": \"REF-AGUA-{{codigo_prueba}}\",\n  \"Fechabase\": \"2026-07-22\",\n  \"Ubicacion\": \"almacenada\",\n  \"Estado\": \"Material de segunda mano\",\n  \"PrecioPVP\": 50,\n  \"Almacen\": \"Almacen\",\n  \"Observaciones\": \"Registro de prueba generado desde Postman\",\n  \"Marca\": \"AUDI\",\n  \"Modelo\": \"A4\",\n  \"Imagenes\": \"https://d1tk9p0n9oifzc.cloudfront.net/MarcasOEM/337.png\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{recambio_api_url}}/CAT?idcliente={{idcliente}}",
+        "description": "Prueba directa del contrato facilitado por Recambio Fácil usando el token en la cabecera x-api-key."
+      }
+    },
+    {
+      "name": "Prueba directa - POST CAT batch (2 piezas)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const base = Number(String(Date.now()).slice(-8));",
+              "pm.collectionVariables.set('codigo_prueba', String(base));",
+              "pm.collectionVariables.set('codigo_prueba_2', String(base + 1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "[\n  {\n    \"Codigo\": \"{{codigo_prueba}}\",\n    \"Idcliente\": {{idcliente}},\n    \"Descripcion\": \"Bomba de agua - PRUEBA BATCH 1\",\n    \"Precio\": 50,\n    \"Referencia\": \"REF-AGUA-{{codigo_prueba}}\",\n    \"Fechabase\": \"2026-07-22\",\n    \"Ubicacion\": \"almacenada\",\n    \"Estado\": \"Material de segunda mano\",\n    \"PrecioPVP\": 50,\n    \"Almacen\": \"Almacen\",\n    \"Observaciones\": \"Registro batch 1 generado desde Postman\",\n    \"Marca\": \"AUDI\",\n    \"Modelo\": \"A4\",\n    \"Imagenes\": \"https://d1tk9p0n9oifzc.cloudfront.net/MarcasOEM/337.png\"\n  },\n  {\n    \"Codigo\": \"{{codigo_prueba_2}}\",\n    \"Idcliente\": {{idcliente}},\n    \"Descripcion\": \"Bomba de agua - PRUEBA BATCH 2\",\n    \"Precio\": 55,\n    \"Referencia\": \"REF-AGUA-{{codigo_prueba_2}}\",\n    \"Fechabase\": \"2026-07-22\",\n    \"Ubicacion\": \"almacenada\",\n    \"Estado\": \"Material de segunda mano\",\n    \"PrecioPVP\": 55,\n    \"Almacen\": \"Almacen\",\n    \"Observaciones\": \"Registro batch 2 generado desde Postman\",\n    \"Marca\": \"AUDI\",\n    \"Modelo\": \"A4\",\n    \"Imagenes\": \"https://d1tk9p0n9oifzc.cloudfront.net/MarcasOEM/337.png\"\n  }\n]",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{recambio_api_url}}/CAT/batch",
+        "description": "Inserta dos recambios en una única llamada batch. La API admite un máximo de 10 objetos por petición."
+      }
+    },
+    {
+      "name": "Descargar etiqueta por pedido - Cazapiezas",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{postman_token}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": "{{app_url}}/api/almacen-desguace/recambio-facil/etiqueta?idPedido={{id_pedido}}",
+        "description": "Consulta mediante Cazapiezas la etiqueta asociada a un pedido conocido."
+      }
+    },
+    {
+      "name": "Descargar etiqueta por pedido - API directa",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": "{{recambio_api_url}}/API/etiqueta?idCliente={{idcliente}}&idPedido={{id_pedido}}",
+        "description": "Descarga directamente la etiqueta Base64 de un pedido conocido. Para consultar por envío sustituye idPedido por idEnvio y utiliza la variable id_envio."
+      }
+    }
+  ]
+}

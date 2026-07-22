@@ -33,6 +33,10 @@ export function normalizePiezaInput(value: unknown): PiezaDesguaceInput {
       result[field] = raw === "" || raw === null || raw === undefined ? null : Number(raw);
     }
   }
+  if ("cajon_id" in source) {
+    const raw = source.cajon_id;
+    result.cajon_id = raw === "" || raw === null || raw === undefined ? null : Number(raw);
+  }
   if ("estado_pieza" in source) result.estado_pieza = source.estado_pieza || null;
   if ("estado_proceso" in source) result.estado_proceso = source.estado_proceso;
   if ("publicado_online" in source) result.publicado_online = Boolean(source.publicado_online);
@@ -45,6 +49,7 @@ export function validatePieza(input: PiezaDesguaceInput) {
   if (input.estado_pieza && !ESTADOS_PIEZA.includes(input.estado_pieza)) errors.push("Estado de pieza no válido.");
   if (input.estado_proceso && !ESTADOS_PROCESO.includes(input.estado_proceso)) errors.push("Estado del proceso no válido.");
   if (input.ubicacion && !UBICACION_PATTERN.test(input.ubicacion)) errors.push("La ubicación debe tener el formato DESGUACE-E01-N03-C05.");
+  if (input.cajon_id !== null && input.cajon_id !== undefined && (!Number.isInteger(input.cajon_id) || input.cajon_id < 1)) errors.push("El cajón seleccionado no es válido.");
   for (const field of NUMBER_FIELDS) {
     const value = input[field];
     if (value !== null && value !== undefined && !Number.isFinite(value)) errors.push(`${field} debe ser numérico.`);
@@ -61,7 +66,6 @@ export function validateReadyToPublish(input: PiezaDesguaceInput, photoCount: nu
   if (!input.referencia_principal && !input.referencia_oem) missing.push("referencia");
   if (!input.estado_pieza) missing.push("estado");
   if (input.precio_venta === null || input.precio_venta === undefined) missing.push("precio");
-  if (!input.ubicacion) missing.push("ubicación");
   if (input.cantidad === null || input.cantidad === undefined) missing.push("cantidad");
   if (photoCount < 1) missing.push("al menos una fotografía");
   return missing;
