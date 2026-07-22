@@ -61,7 +61,6 @@ export function validateReadyToPublish(input: PiezaDesguaceInput, photoCount: nu
   if (!input.referencia_principal && !input.referencia_oem) missing.push("referencia");
   if (!input.estado_pieza) missing.push("estado");
   if (input.precio_venta === null || input.precio_venta === undefined) missing.push("precio");
-  if (!input.ubicacion) missing.push("ubicación");
   if (input.cantidad === null || input.cantidad === undefined) missing.push("cantidad");
   if (photoCount < 1) missing.push("al menos una fotografía");
   return missing;

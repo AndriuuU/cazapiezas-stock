@@ -114,6 +114,20 @@ function securityError(message: string, status: number, retryAfter?: number) {
   return response;
 }
 
+function safeTokenEquals(left: string, right: string) {
+  if (!left || left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index++) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
+}
+
+function hasValidPostmanToken(request: Request) {
+  const configured = process.env.CAZAPIEZAS_POSTMAN_TOKEN?.trim() || "";
+  const authorization = request.headers.get("authorization")?.trim() || "";
+  const supplied = authorization.toLowerCase().startsWith("bearer ") ? authorization.slice(7).trim() : "";
+  return Boolean(configured) && safeTokenEquals(supplied, configured);
+}
+
 export async function protectApiRequest(
   request: Request,
   rateLimitOptions?: RateLimitOptions
@@ -138,6 +152,23 @@ export async function protectApiRequest(
     return securityError("Inicia sesion para continuar.", 401);
   }
 
+  return undefined;
+}
+
+export async function protectApiOrPostmanRequest(
+  request: Request,
+  rateLimitOptions?: RateLimitOptions
+) {
+  if (!hasValidPostmanToken(request)) return protectApiRequest(request, rateLimitOptions);
+  if (!isIpAllowed(request)) return securityError("Esta red no tiene acceso a Cazapiezas Stock.", 403);
+  const rateLimit = checkRateLimit(request, rateLimitOptions || DEFAULT_RATE_LIMIT);
+  if (!rateLimit.allowed) {
+    return securityError(
+      `Demasiadas peticiones. Espera ${rateLimit.retryAfter} segundos y vuelve a intentarlo.`,
+      429,
+      rateLimit.retryAfter
+    );
+  }
   return undefined;
 }
 

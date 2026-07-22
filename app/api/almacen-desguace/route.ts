@@ -96,7 +96,7 @@ export async function GET(request: Request) {
     const piezas = await parseSupabaseResponse<PiezaDesguace[]>(response);
     if (allIds) {
       const total = totalValue && totalValue !== "*" ? Number(totalValue) : piezas.length;
-      return NextResponse.json({ ids: piezas.map((pieza) => pieza.id), total });
+      return NextResponse.json({ ids: piezas.map((pieza) => pieza.id), total }, { headers: { "Cache-Control": "no-store" } });
     }
     const items = await Promise.all(piezas.map(async (pieza) => {
       const principal = (pieza.fotos || []).find((foto) => foto.es_principal) || pieza.fotos?.[0];
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
       total,
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
       categories: await getCategories(url, key),
-    });
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo cargar el almacén." }, { status: 500 });
   }
@@ -122,6 +122,7 @@ export async function POST(request: Request) {
 
   try {
     const input = normalizePiezaInput(await request.json());
+    input.publicado_online = false;
     if (input.estado_proceso === "Retirada" || input.estado_proceso === "Vendida") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(input);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });

@@ -4,9 +4,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Camera, ImagePlus, Loader2, Save, X } from "lucide-react";
+import { ArrowLeft, Camera, CloudUpload, ImagePlus, Loader2, Save, X } from "lucide-react";
 import { ESTADOS_PIEZA, ESTADOS_PROCESO, type PiezaDesguace } from "@/types/almacen-desguace";
+import ConfirmDialog from "@/components/almacen-desguace/ConfirmDialog";
 import LocationField from "@/components/almacen-desguace/LocationField";
+
+type PublicationResponse = {
+  published?: Array<{ id: number }>;
+  skipped?: Array<{ id: number; reason?: string }>;
+  failed?: Array<{ error?: string }>;
+  error?: string;
+};
 
 const fields = [
   ["nombre_pieza", "Nombre de la pieza"], ["descripcion", "Descripción"], ["categoria", "Categoría"],
@@ -19,12 +27,19 @@ const fields = [
 export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const submitModeRef = useRef<"save" | "save-and-publish">("save");
   const [saving, setSaving] = useState(false);
   const [savingStep, setSavingStep] = useState("");
   const [error, setError] = useState("");
+  const [confirmingPublication, setConfirmingPublication] = useState(false);
   const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
   const [createdPieceId, setCreatedPieceId] = useState<number | null>(null);
   const [uploadedPhotoCount, setUploadedPhotoCount] = useState(0);
+
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
 
   async function uploadPhotos(pieceId: number) {
     if (!pendingPhotos.length) return;
@@ -40,9 +55,10 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const publishAfterSave = submitModeRef.current === "save-and-publish";
+    submitModeRef.current = "save";
     const form = new FormData(event.currentTarget);
     const payload = Object.fromEntries(form.entries()) as Record<string, FormDataEntryValue | boolean>;
-    payload.publicado_online = form.get("publicado_online") === "on";
     const publishState = payload.estado_proceso === "Lista para publicar" || payload.estado_proceso === "Publicada";
     if (publishState) {
       const missing = [
@@ -50,7 +66,6 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
         !String(payload.referencia_principal || "").trim() && !String(payload.referencia_oem || "").trim() && "referencia",
         !String(payload.estado_pieza || "").trim() && "estado",
         !String(payload.precio_venta || "").trim() && "precio",
-        !String(payload.ubicacion || "").trim() && "ubicación",
         !String(payload.cantidad || "").trim() && "cantidad",
         !((pieza?.fotos?.length || 0) + uploadedPhotoCount + pendingPhotos.length) && "al menos una fotografía",
       ].filter(Boolean);
@@ -83,6 +98,29 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
         if (!updateResponse.ok) throw new Error(updated.error || "No se pudo guardar.");
         if (!publishState && pendingPhotos.length) await uploadPhotos(pieceId);
       }
+
+      if (publishAfterSave) {
+        setSavingStep("Publicando en Recambio Fácil...");
+        try {
+          const publishResponse = await fetch("/api/almacen-desguace/recambio-facil/publicar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: pieceId }),
+          });
+          const publication = await publishResponse.json() as PublicationResponse;
+          const published = publication.published?.some((item) => item.id === pieceId);
+          const alreadyOnline = publication.skipped?.some((item) => item.id === pieceId);
+          if (!published && !alreadyOnline) {
+            throw new Error(publication.failed?.[0]?.error || publication.error || "Recambio Fácil no confirmó el alta.");
+          }
+        } catch (publicationError) {
+          const detail = publicationError instanceof Error ? publicationError.message : "No se pudo conectar con Recambio Fácil.";
+          router.push(`/almacen-desguace/${pieceId}?rf_error=${encodeURIComponent(detail.slice(0, 700))}`);
+          router.refresh();
+          return;
+        }
+      }
+
       router.push(`/almacen-desguace/${pieceId}`);
       router.refresh();
     } catch (caught) {
@@ -95,14 +133,14 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
   return (
     <form ref={formRef} onSubmit={submit} className="space-y-6">
       <Link href="/almacen-desguace" className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-bold text-zinc-300 hover:border-amber-500/40 hover:text-amber-300"><ArrowLeft size={17} /> Volver a Almacén Desguace</Link>
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+      {error && <div ref={errorRef} role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
         <h2 className="mb-4 text-lg font-bold text-white">Datos e identificación</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {fields.map(([name, label]) => (
-            <label key={name} className={name === "descripcion" || name === "referencias_equivalentes" ? "md:col-span-2" : ""}>
+            <label key={name} className={name === "descripcion" ? "md:col-span-2" : ""}>
               <span className="mb-1.5 block text-sm font-medium text-zinc-400">{label}</span>
-              {name === "descripcion" || name === "referencias_equivalentes" ?
+              {name === "descripcion" ?
                 <textarea name={name} defaultValue={String(value(name))} rows={3} className={inputClass} /> :
                 <input name={name} defaultValue={String(value(name))} className={inputClass} />}
             </label>
@@ -121,8 +159,9 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
           <Field label="Año desde"><input name="ano_desde" type="number" min="1900" max="2100" defaultValue={String(value("ano_desde"))} className={inputClass} /></Field>
           <Field label="Año hasta"><input name="ano_hasta" type="number" min="1900" max="2100" defaultValue={String(value("ano_hasta"))} className={inputClass} /></Field>
           <Field label="Fecha de entrada"><input name="fecha_entrada" type="date" defaultValue={String(value("fecha_entrada") || new Date().toISOString().slice(0, 10))} className={inputClass} /></Field>
-          <label className="flex items-center gap-3 self-end rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-300"><input name="publicado_online" type="checkbox" defaultChecked={pieza?.publicado_online} className="h-4 w-4 accent-amber-500" /> Publicada online</label>
+          <div className={`self-end rounded-xl border px-3 py-2.5 text-sm font-semibold ${pieza?.publicado_online ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-zinc-700 bg-zinc-950 text-zinc-400"}`}>{pieza?.publicado_online ? "Online en Recambio Fácil" : pieza ? "No publicada en Recambio Fácil" : "Se publicará después de guardar"}</div>
         </div>
+        <p className="mt-3 text-xs text-zinc-500">El estado Online no se modifica a mano: usa el botón “Publicar en Recambio Fácil” y se activará únicamente cuando la plataforma confirme el alta.</p>
         <p className="mt-4 text-xs text-zinc-500">Puedes guardar cualquier campo incompleto como borrador. Al elegir “Lista para publicar” o “Publicada” se comprobarán automáticamente todos los requisitos.</p>
       </section>
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -130,7 +169,21 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
         {pieza?.fotos?.length ? <p className="mt-3 text-sm text-emerald-300">Esta pieza ya tiene {pieza.fotos.length} fotografía{pieza.fotos.length === 1 ? "" : "s"} guardada{pieza.fotos.length === 1 ? "" : "s"}.</p> : null}
         {pendingPhotos.length ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">{pendingPhotos.map((file, index) => <PendingPhoto key={`${file.name}-${file.lastModified}-${index}`} file={file} onRemove={() => setPendingPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))} />)}</div> : <div className="mt-4 rounded-xl border border-dashed border-zinc-700 py-8 text-center text-sm text-zinc-500">No has añadido fotografías nuevas.</div>}
       </section>
-      <div className="flex flex-wrap items-center justify-end gap-3">{savingStep && <span className="text-sm text-zinc-400">{savingStep}</span>}<button disabled={saving} className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 font-bold text-zinc-950 hover:bg-amber-400 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Guardar pieza</button></div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {savingStep && <span className="text-sm text-zinc-400">{savingStep}</span>}
+        <button type="submit" disabled={saving} className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 font-bold text-zinc-200 hover:border-amber-500/50 hover:text-amber-300 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} Guardar pieza</button>
+        {!pieza && <button type="button" disabled={saving} onClick={() => setConfirmingPublication(true)} className="inline-flex min-w-52 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-3 font-black text-zinc-950 hover:bg-cyan-400 disabled:opacity-50"><CloudUpload size={18} /> Guardar y publicar en R/F</button>}
+      </div>
+      {confirmingPublication && <ConfirmDialog
+        title="¿Guardar y publicar esta pieza?"
+        description="Primero se guardarán los datos y las fotografías. Si todo es válido, la pieza se enviará a Recambio Fácil y quedará marcada como Online cuando la plataforma confirme el alta."
+        confirmLabel="Sí, guardar y publicar"
+        onConfirm={() => {
+          submitModeRef.current = "save-and-publish";
+          formRef.current?.requestSubmit();
+        }}
+        onClose={() => setConfirmingPublication(false)}
+      />}
     </form>
   );
 }
@@ -140,7 +193,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function PendingPhoto({ file, onRemove }: { file: File; onRemove: () => void }) {
-  const [preview] = useState(() => URL.createObjectURL(file));
-  useEffect(() => () => URL.revokeObjectURL(preview), [preview]);
-  return <div className="relative overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950"><img src={preview} alt={file.name} className="aspect-square w-full object-cover" /><button type="button" onClick={onRemove} title="Quitar fotografía" className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1.5 text-white hover:bg-red-500"><X size={15} /></button><p className="truncate px-2 py-1.5 text-[10px] text-zinc-500">{file.name}</p></div>;
+  const [preview, setPreview] = useState("");
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(file);
+    // La URL pertenece a un recurso externo del navegador y debe renovarse cuando cambia el archivo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return <div className="relative overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950">{preview ? <img src={preview} alt={file.name} className="aspect-square w-full object-cover" /> : <div className="aspect-square w-full animate-pulse bg-zinc-800" />}<button type="button" onClick={onRemove} title="Quitar fotografía" className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1.5 text-white hover:bg-red-500"><X size={15} /></button><p className="truncate px-2 py-1.5 text-[10px] text-zinc-500">{file.name}</p></div>;
 }

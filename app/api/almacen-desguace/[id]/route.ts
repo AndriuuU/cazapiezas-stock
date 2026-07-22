@@ -23,7 +23,6 @@ export async function GET(request: Request, context: Context) {
 }
 
 function actionPatch(action: unknown): PiezaDesguaceInput {
-  if (action === "publicar") return { estado_proceso: "Publicada", publicado_online: true };
   if (action === "reservar") return { estado_proceso: "Reservada" };
   if (action === "vender") return { estado_proceso: "Vendida", publicado_online: false, ubicacion: null, cajon_id: null };
   if (action === "enviar") return { estado_proceso: "Enviada" };
@@ -39,7 +38,10 @@ export async function PATCH(request: Request, context: Context) {
     const current = await getPieza(id);
     if (!current) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
     const raw = await request.json() as Record<string, unknown>;
-    const patch = { ...normalizePiezaInput(raw), ...actionPatch(raw.action) };
+    if (raw.action === "publicar") return NextResponse.json({ error: "Usa la publicación de Recambio Fácil para marcar una pieza como Online." }, { status: 400 });
+    const normalized = normalizePiezaInput(raw);
+    delete normalized.publicado_online;
+    const patch = { ...normalized, ...actionPatch(raw.action) };
     if (patch.estado_proceso === "Retirada" || patch.estado_proceso === "Vendida") Object.assign(patch, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(patch);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
@@ -47,9 +49,6 @@ export async function PATCH(request: Request, context: Context) {
     if (requiresPublishValidation(merged.estado_proceso)) {
       const missing = validateReadyToPublish(merged, await getPhotoCount(id));
       if (missing.length) return NextResponse.json({ error: `Para publicar faltan: ${missing.join(", ")}.` }, { status: 400 });
-    }
-    if (requiresPublishValidation(merged.estado_proceso) && !merged.ubicacion) {
-      return NextResponse.json({ error: "Una pieza disponible debe tener ubicación." }, { status: 400 });
     }
     const { url, key } = getSupabaseApiConfig();
     const params = new URLSearchParams({ id: `eq.${id}`, select: "*" });
