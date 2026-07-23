@@ -6,6 +6,7 @@ import {
   getCatPiece,
   getRecambioFacilCode,
   getRecambioFacilConfig,
+  recambioFacilCentsToEuros,
   RecambioFacilRequestError,
   updateCatPiece,
   validateCatPiece,
@@ -55,6 +56,7 @@ function remoteSummary(remote: CatRemotePiece | null) {
     }
     return null;
   };
+  const price = (...aliases: string[]) => recambioFacilCentsToEuros(value(...aliases));
   return {
     Codigo: value("Codigo", "referenciaDMS"),
     Idcliente: value("Idcliente", "idcliente"),
@@ -63,19 +65,19 @@ function remoteSummary(remote: CatRemotePiece | null) {
     Referencia3: value("Referencia3", "referencia3"),
     Descripcion: value("Descripcion", "descripcion"),
     Stock: value("Stock", "stock"),
-    Precio: value("Precio", "preciocalculado"),
+    Precio: price("Precio", "preciocalculado"),
     Estado: value("Estado", "estado"),
-    ImporteCasco: value("ImporteCasco", "importecasco"),
+    ImporteCasco: price("ImporteCasco", "importecasco"),
     ClaveDescuento: value("ClaveDescuento", "clavedescuento"),
     Fechabase: value("Fechabase", "fechabase"),
-    PrecioPM: value("PrecioPM", "preciopm"),
+    PrecioPM: price("PrecioPM", "preciopm"),
     FechaUltimaEntrada: value("FechaUltimaEntrada", "fechaultimaentrada"),
     FechaUltimaSalida: value("FechaUltimaSalida", "fechaultimasalida"),
     FechaUltimoMovimiento: value("FechaUltimoMovimiento", "fechaultimomovimiento"),
     Ubicacion: value("Ubicacion", "ubicacion"),
     UbicacionEstanteria: value("UbicacionEstanteria", "ubicacionestanteria"),
-    PrecioPVP: value("PrecioPVP", "preciopvp"),
-    PrecioPUE: value("PrecioPUE", "preciopue"),
+    PrecioPVP: price("PrecioPVP", "preciopvp"),
+    PrecioPUE: price("PrecioPUE", "preciopue"),
     Almacen: value("Almacen", "almacen"),
     Peso: value("Peso", "peso"),
     Observaciones: value("Observaciones", "observaciones"),
