@@ -74,6 +74,21 @@ function optional<T extends string | number>(value: T | null | undefined) {
   return value === null || value === undefined || value === "" ? undefined : value;
 }
 
+export function eurosToRecambioFacilCents(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    throw new Error("El precio de venta no es válido.");
+  }
+  const euros = Number(value);
+  if (!Number.isFinite(euros) || euros < 0) throw new Error("El precio de venta no es válido.");
+  return Math.round((euros + Number.EPSILON) * 100);
+}
+
+export function recambioFacilCentsToEuros(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const cents = Number(value);
+  return Number.isFinite(cents) ? cents / 100 : null;
+}
+
 function referenceParts(piece: PiezaDesguace) {
   const internalCode = text(piece.codigo_interno).toLocaleLowerCase("es");
   const candidates = [
@@ -124,17 +139,18 @@ export function validateCatPiece(piece: PiezaDesguace, config: RecambioFacilConf
 export function buildCatPayload(piece: PiezaDesguace, config: RecambioFacilConfig): CatPayload {
   const reference = referenceParts(piece);
   const images = (piece.fotos || []).map((photo) => photo.url_publica || photo.url_imagen).filter(Boolean).join(", ");
+  const priceInCents = eurosToRecambioFacilCents(piece.precio_venta);
   return {
     Codigo: getRecambioFacilCode(piece, config),
     Idcliente: config.idcliente,
     Descripcion: text(piece.nombre_pieza),
-    Precio: Number(piece.precio_venta),
+    Precio: priceInCents,
     Ubicacion: "almacenada",
     Referencia: optional(reference),
     Fechabase: date(piece.fecha_entrada),
     UbicacionEstanteria: shelfLocation(piece.ubicacion),
     Estado: "Material de segunda mano",
-    PrecioPVP: Number(piece.precio_venta),
+    PrecioPVP: priceInCents,
     Almacen: config.almacen,
     Observaciones: optional(text(piece.descripcion)),
     Marca: optional(text(piece.marca_vehiculo)),

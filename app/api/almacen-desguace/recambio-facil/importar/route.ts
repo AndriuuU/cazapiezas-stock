@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getCatPieceByCode,
   getRecambioFacilConfig,
+  recambioFacilCentsToEuros,
   RecambioFacilRequestError,
   type CatRemotePiece,
 } from "@/lib/recambio-facil-api";
@@ -93,7 +94,7 @@ function mapRemotePiece(remote: CatRemotePiece, externalCode: string): PiezaDesg
     ano_hasta: optionalYear(remoteValue(remote, "ModeloFin", "modeloAnoFin")),
     estado_pieza: importedCondition(remote),
     cantidad: stock === null ? 1 : Math.max(0, Math.trunc(stock)),
-    precio_venta: optionalNumber(remoteValue(remote, "Precio", "preciocalculado", "PrecioPVP", "preciopvp")),
+    precio_venta: recambioFacilCentsToEuros(remoteValue(remote, "Precio", "preciocalculado", "PrecioPVP", "preciopvp")),
     ubicacion: null,
     cajon_id: null,
     procedencia: "Recambio Fácil · importada mediante API",

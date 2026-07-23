@@ -53,6 +53,10 @@ Campos obligatorios antes de publicar:
 - Marca del vehículo → `Marca`
 - Modelo del vehículo → `Modelo`
 
+Recambio Fácil recibe `Precio` y `PrecioPVP` en céntimos. Cazapiezas realiza la conversión
+automáticamente: `12,00 €` se envía como `1200` y `1.200,00 €` como `120000`. Al consultar
+o importar una pieza, la conversión se realiza en sentido inverso para mostrar y guardar euros.
+
 Aunque Recambio Fácil llama `Descripcion` a su campo, Cazapiezas envía siempre
 `nombre_pieza`. El campo local de descripción queda reservado para observaciones y detalles
 opcionales, enviados mediante `Observaciones`.
