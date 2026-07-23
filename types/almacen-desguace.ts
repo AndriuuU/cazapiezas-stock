@@ -152,6 +152,7 @@ export interface PiezaDesguace {
   procedencia: string | null;
   estado_proceso: EstadoProceso;
   publicado_online: boolean;
+  codigo_recambio_facil: string | null;
   fecha_entrada: string;
   created_at: string;
   updated_at: string;

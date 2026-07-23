@@ -13,17 +13,22 @@ function normalizeIds(body: { id?: unknown; ids?: unknown }) {
   return [...new Set(source.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
-async function markOnline(pieces: PiezaDesguace[], url: string, key: string) {
-  const idsFilter = `in.(${pieces.map((piece) => piece.id).join(",")})`;
-  const updateParams = new URLSearchParams({ id: idsFilter, select: "id" });
-  const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {
-    method: "PATCH",
-    headers: supabaseHeaders(key, { Prefer: "return=representation" }),
-    body: JSON.stringify({ publicado_online: true }),
-  });
-  if (!response.ok) throw new Error((await response.text()).slice(0, 250));
-  const updated = await response.json() as Array<{ id: number }>;
-  if (updated.length !== pieces.length) throw new Error("No se pudieron confirmar todas las piezas en la base de datos.");
+async function markOnline(pieces: PiezaDesguace[], url: string, key: string, config: ReturnType<typeof getRecambioFacilConfig>) {
+  const updated = await Promise.all(pieces.map(async (piece) => {
+    const updateParams = new URLSearchParams({ id: `eq.${piece.id}`, select: "id" });
+    const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {
+      method: "PATCH",
+      headers: supabaseHeaders(key, { Prefer: "return=representation" }),
+      body: JSON.stringify({
+        publicado_online: true,
+        codigo_recambio_facil: buildCatPayload(piece, config).Codigo,
+      }),
+    });
+    if (!response.ok) throw new Error((await response.text()).slice(0, 250));
+    const rows = await response.json() as Array<{ id: number }>;
+    return rows[0]?.id;
+  }));
+  if (updated.some((id) => !id)) throw new Error("No se pudieron confirmar todas las piezas en la base de datos.");
 }
 
 export async function POST(request: Request) {
@@ -124,7 +129,7 @@ export async function POST(request: Request) {
           const accepted = [...created, ...alreadyInserted];
           if (accepted.length) {
             try {
-              await markOnline(accepted, url, key);
+              await markOnline(accepted, url, key, recambioConfig);
               published.push(...created.map((piece) => ({ id: piece.id, codigo: piece.codigo_interno })));
               skipped.push(...alreadyInserted.map((piece) => ({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba insertada en Recambio Fácil; se ha sincronizado como Online." })));
             } catch (error) {
@@ -134,7 +139,7 @@ export async function POST(request: Request) {
           }
         } catch (error) {
           const detail = error instanceof Error ? error.message : "Error desconocido al publicar el lote.";
-          if (batch.length > 1 && /batch respondi[oó] 500/i.test(detail)) {
+          if (batch.length > 1 && /(?:batch respondi[oó] 500|respondi[oó] 500 al publicar el lote)/i.test(detail)) {
             for (const piece of batch) {
               const payload = buildCatPayload(piece, recambioConfig);
               try {
@@ -148,7 +153,7 @@ export async function POST(request: Request) {
                   continue;
                 }
                 try {
-                  await markOnline([piece], url, key);
+                  await markOnline([piece], url, key, recambioConfig);
                   if (createdNow) published.push({ id: piece.id, codigo: piece.codigo_interno });
                   else skipped.push({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba insertada en Recambio Fácil; se ha sincronizado como Online." });
                 } catch (databaseError) {

@@ -13,6 +13,28 @@ export async function POST(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     if (!(await getPieza(id))) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const body = await request.json() as { urls?: unknown };
+      const urls = Array.isArray(body.urls)
+        ? [...new Set(body.urls.map(String).map((value) => value.trim()).filter(isRemoteImageUrl))].slice(0, 20)
+        : [];
+      if (!urls.length) return NextResponse.json({ error: "No se recibieron fotografías válidas de Recambio Fácil." }, { status: 400 });
+      const { url, key } = getSupabaseApiConfig();
+      let count = await getPhotoCount(id);
+      const created: FotoDesguace[] = [];
+      for (const remoteUrl of urls) {
+        const insert = await fetch(`${url}/rest/v1/almacen_desguace_fotos?select=*`, {
+          method: "POST",
+          headers: supabaseHeaders(key, { Prefer: "return=representation" }),
+          body: JSON.stringify({ pieza_id: Number(id), url_imagen: remoteUrl, es_principal: count === 0, orden: count }),
+        });
+        const rows = await parseSupabaseResponse<FotoDesguace[]>(insert);
+        created.push(rows[0]);
+        count++;
+      }
+      return NextResponse.json(created, { status: 201 });
+    }
     const form = await request.formData();
     const files = form.getAll("fotos").filter((item): item is File => item instanceof File);
     if (!files.length) return NextResponse.json({ error: "Selecciona al menos una foto." }, { status: 400 });
@@ -43,6 +65,15 @@ export async function POST(request: Request, context: Context) {
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudieron subir las fotos." }, { status: 500 });
+  }
+}
+
+function isRemoteImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 

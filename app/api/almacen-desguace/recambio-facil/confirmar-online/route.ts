@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const { url, key } = getSupabaseApiConfig();
     const selectedParams = new URLSearchParams({
       id: `in.(${ids.join(",")})`,
-      select: "id,codigo_interno,nombre_pieza,cajon_id,publicado_online",
+      select: "id,codigo_interno,nombre_pieza,cajon_id,publicado_online,referencia_principal,codigo_recambio_facil",
       limit: "1000",
     });
     const selectedResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${selectedParams}`, {
@@ -35,16 +35,17 @@ export async function POST(request: Request) {
       nombre_pieza: string | null;
       cajon_id: number | null;
       publicado_online: boolean;
+      referencia_principal: string | null;
+      codigo_recambio_facil: string | null;
     }>>(selectedResponse);
     if (selected.length !== ids.length) {
       return NextResponse.json({ error: "Alguna pieza ya no existe. Actualiza el listado y vuelve a intentarlo." }, { status: 409 });
     }
 
-    const params = new URLSearchParams({ id: `in.(${ids.join(",")})`, select: "id" });
-    const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {
-      method: "PATCH",
-      headers: supabaseHeaders(key, { Prefer: "return=representation" }),
-      body: JSON.stringify({ publicado_online: true }),
+    const response = await fetch(`${url}/rest/v1/rpc/almacen_desguace_confirmar_online_rf`, {
+      method: "POST",
+      headers: supabaseHeaders(key),
+      body: JSON.stringify({ p_ids: ids }),
     });
     const updated = await parseSupabaseResponse<Array<{ id: number }>>(response);
     if (updated.length !== ids.length) {
@@ -59,9 +60,13 @@ export async function POST(request: Request) {
       accion: piece.publicado_online ? "Online confirmado manualmente de nuevo" : "Marcada Online manualmente",
       campos_cambiados: piece.publicado_online ? [] : ["publicado_online"],
       valor_anterior: { publicado_online: piece.publicado_online },
-      valor_nuevo: { publicado_online: true },
-      detalle: "Confirmación manual desde la lista de piezas; no realiza una publicación nueva en Recambio Fácil.",
+      valor_nuevo: {
+        publicado_online: true,
+        codigo_recambio_facil: piece.codigo_recambio_facil || piece.referencia_principal,
+      },
+      detalle: "Confirmación manual desde la lista; guarda la referencia interna como código R/F y no realiza una publicación nueva.",
       origen: "confirmacion_manual",
+      metadata: { codigo_rf: piece.codigo_recambio_facil || piece.referencia_principal },
     })));
     return NextResponse.json({ count: updated.length });
   } catch (error) {
