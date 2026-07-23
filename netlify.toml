@@ -1,0 +1,6 @@
+[build.environment]
+  # Estas variables deben formar parte de la salida de la aplicación:
+  # - Las variables NEXT_PUBLIC_* son públicas por diseño.
+  # - El ID de cliente de Recambio Fácil identifica la cuenta, pero no autentica.
+  # La clave privada RECAMBIO_FACIL_API_KEY no se excluye del escaneo.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,RECAMBIO_FACIL_ID_CLIENTE"
