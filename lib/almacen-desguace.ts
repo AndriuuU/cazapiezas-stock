@@ -10,7 +10,7 @@ const TEXT_FIELDS = [
   "nombre_pieza", "descripcion", "categoria", "marca_pieza",
   "referencia_principal", "referencia_oem", "referencias_equivalentes",
   "marca_vehiculo", "modelo_vehiculo", "matricula_vehiculo", "motorizacion", "codigo_motor",
-  "ubicacion", "procedencia", "fecha_entrada",
+  "ubicacion", "procedencia", "codigo_recambio_facil", "fecha_entrada",
 ] as const;
 const NUMBER_FIELDS = [
   "ano_desde", "ano_hasta", "cantidad", "precio_coste", "precio_venta",

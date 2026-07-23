@@ -33,6 +33,12 @@ x-api-key: TOKEN-DE-RECAMBIO-FACIL
 - Para publicar varias, selecciónalas y pulsa **Publicar** en el bloque azul.
 - Cazapiezas utiliza `POST /CAT/batch` y crea lotes de un máximo de 10 recambios. Si seleccionas más de 10, se generan varios lotes consecutivos.
 - En la ficha de una pieza no online también aparece **Publicar en R/F**.
+- La ficha incluye un bloque **Comprobar y gestionar la publicación**. Primero utiliza
+  `GET /CAT/{codigo}` para confirmar si la pieza existe realmente en R/F.
+- Después de una comprobación correcta permite actualizar todos los datos con `PUT /CAT`
+  o eliminar solamente el anuncio externo con `DELETE /CAT/{codigo}`.
+- Eliminar de R/F no borra la pieza de Cazapiezas, no cambia su ubicación y conserva
+  fotografías e historial. Si estaba en proceso `Publicada`, pasa a `Lista para publicar`.
 - Siempre se muestra una confirmación antes de enviar.
 - Si una pieza ya está online se omite, por lo que no se publica dos veces desde la aplicación.
 - Si falla una pieza de una selección, las demás continúan y se muestra el motivo de cada error.
@@ -41,8 +47,15 @@ Campos obligatorios antes de publicar:
 
 - Código RF numérico generado de forma estable a partir del cliente y el ID interno → `Codigo`
 - Cliente configurado → `Idcliente`
-- Descripción; si está vacía se usa el nombre de la pieza → `Descripcion`
+- Nombre de la pieza → `Descripcion` en la API de Recambio Fácil
 - Precio de venta → `Precio`
+- Referencia principal de al menos cuatro caracteres → `Referencia`
+- Marca del vehículo → `Marca`
+- Modelo del vehículo → `Modelo`
+
+Aunque Recambio Fácil llama `Descripcion` a su campo, Cazapiezas envía siempre
+`nombre_pieza`. El campo local de descripción queda reservado para observaciones y detalles
+opcionales, enviados mediante `Observaciones`.
 - `Ubicacion` se envía automáticamente como `almacenada`, tenga o no ubicación física en Cazapiezas
 
 También se envían únicamente los campos opcionales que ya se han comprobado correctamente: referencia principal, fecha base, ubicación corta de estantería, PVP, observaciones, marca, modelo y fotografías. `Imagenes` es una cadena con las URLs públicas separadas por comas. Los campos vacíos no se incluyen.
@@ -74,6 +87,30 @@ Content-Type: application/json
   "id": 1
 }
 ```
+
+La colección también incluye estas operaciones usando `pieza_id`:
+
+```http
+GET    {{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}
+PUT    {{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}
+DELETE {{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}
+```
+
+`GET` es la operación recomendada antes de actualizar o eliminar. Las tres rutas calculan
+el código numérico de R/F automáticamente, por lo que no debes escribirlo a mano.
+
+Para probar directamente la API sin tocar una pieza real, ejecuta completa la carpeta
+**PRUEBA COMPLETA CRUD DIRECTA - ejecutar carpeta**. Postman realiza automáticamente:
+
+1. Crear un recambio temporal con código único.
+2. Comprobarlo mediante `GET`.
+3. Editar descripción y precio mediante `PUT`.
+4. Volver a consultar y verificar la edición.
+5. Eliminar el recambio temporal mediante `DELETE`.
+6. Confirmar mediante `GET` que la API devuelve `404`.
+
+Solo necesitas rellenar `recambio_api_key`. El cliente y la URL de preproducción ya están
+configurados en las variables de la colección.
 
 También puedes enviar hasta 50 IDs:
 

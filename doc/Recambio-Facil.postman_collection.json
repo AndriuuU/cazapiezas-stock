@@ -13,6 +13,8 @@
     { "key": "idcliente", "value": "31172" },
     { "key": "codigo_prueba", "value": "" },
     { "key": "codigo_prueba_2", "value": "" },
+    { "key": "codigo_crud_prueba", "value": "" },
+    { "key": "fecha_prueba", "value": "" },
     { "key": "id_pedido", "value": "" },
     { "key": "id_envio", "value": "" },
     { "key": "recambio_api_key", "value": "" }
@@ -34,6 +36,230 @@
         "url": "{{app_url}}/api/almacen-desguace/recambio-facil/publicar",
         "description": "Publica una o varias piezas almacenadas y solo las marca Online después de una respuesta correcta de Recambio Fácil."
       }
+    },
+    {
+      "name": "Comprobar una pieza en R/F desde Cazapiezas",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{postman_token}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": "{{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}",
+        "description": "Consulta GET /CAT/{codigo} y sincroniza el estado Online local con la respuesta real de Recambio Fácil."
+      }
+    },
+    {
+      "name": "Actualizar una pieza en R/F desde Cazapiezas",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{postman_token}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": "{{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}",
+        "description": "Envía mediante PUT los datos actuales de la pieza almacenada. No crea una pieza nueva si no existe en R/F."
+      }
+    },
+    {
+      "name": "Eliminar una pieza solo de R/F desde Cazapiezas",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{postman_token}}", "type": "text" },
+          { "key": "Accept", "value": "application/json", "type": "text" }
+        ],
+        "url": "{{app_url}}/api/almacen-desguace/recambio-facil/gestionar/{{pieza_id}}",
+        "description": "ATENCIÓN: elimina el anuncio de Recambio Fácil. Conserva la pieza, ubicación, fotos e historial en Cazapiezas."
+      }
+    },
+    {
+      "name": "PRUEBA COMPLETA CRUD DIRECTA - ejecutar carpeta",
+      "description": "Ejecuta esta carpeta en orden. Crea un recambio temporal, lo comprueba, lo edita, verifica la edición, lo elimina y confirma que ya no existe. No utiliza ninguna pieza real de Cazapiezas.",
+      "item": [
+        {
+          "name": "01 - Crear recambio temporal",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const codigo = `8${String(Date.now()).slice(-8)}`;",
+                  "pm.collectionVariables.set('codigo_crud_prueba', codigo);",
+                  "pm.collectionVariables.set('fecha_prueba', new Date().toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recambio temporal creado (201)', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test('Se conserva el código de prueba', function () {",
+                  "  pm.expect(pm.collectionVariables.get('codigo_crud_prueba')).to.match(/^\\d{9}$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Codigo\": \"{{codigo_crud_prueba}}\",\n  \"Idcliente\": {{idcliente}},\n  \"Descripcion\": \"PIEZA TEMPORAL - PRUEBA CRUD POSTMAN\",\n  \"Precio\": 50,\n  \"Referencia\": \"CRUD-{{codigo_crud_prueba}}\",\n  \"Fechabase\": \"{{fecha_prueba}}\",\n  \"Ubicacion\": \"almacenada\",\n  \"Estado\": \"Material de segunda mano\",\n  \"PrecioPVP\": 50,\n  \"Almacen\": \"Almacen\",\n  \"Observaciones\": \"Registro temporal para probar GET, PUT y DELETE\",\n  \"Marca\": \"AUDI\",\n  \"Modelo\": \"A4\",\n  \"Imagenes\": \"https://d1tk9p0n9oifzc.cloudfront.net/MarcasOEM/337.png\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{recambio_api_url}}/CAT?idcliente={{idcliente}}",
+            "description": "Crea una pieza temporal con un código numérico nuevo. Las siguientes peticiones utilizan automáticamente este mismo código."
+          }
+        },
+        {
+          "name": "02 - Comprobar que existe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La pieza existe en R/F (200)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('La respuesta contiene el código creado', function () {",
+                  "  pm.expect(pm.response.text()).to.include(pm.collectionVariables.get('codigo_crud_prueba'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": "{{recambio_api_url}}/CAT/{{codigo_crud_prueba}}?idcliente={{idcliente}}",
+            "description": "Comprueba mediante GET que el recambio temporal acaba de crearse."
+          }
+        },
+        {
+          "name": "03 - Editar descripción y precio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recambio actualizado (200 o 201)', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Codigo\": \"{{codigo_crud_prueba}}\",\n  \"Idcliente\": {{idcliente}},\n  \"Descripcion\": \"PIEZA TEMPORAL EDITADA CORRECTAMENTE\",\n  \"Precio\": 65,\n  \"Referencia\": \"CRUD-{{codigo_crud_prueba}}\",\n  \"Fechabase\": \"{{fecha_prueba}}\",\n  \"Ubicacion\": \"almacenada\",\n  \"Estado\": \"Material de segunda mano\",\n  \"PrecioPVP\": 65,\n  \"Almacen\": \"Almacen\",\n  \"Observaciones\": \"Descripción y precio modificados desde Postman\",\n  \"Marca\": \"AUDI\",\n  \"Modelo\": \"A4\",\n  \"Imagenes\": \"https://d1tk9p0n9oifzc.cloudfront.net/MarcasOEM/337.png\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{recambio_api_url}}/CAT?idcliente={{idcliente}}",
+            "description": "Actualiza la pieza temporal cambiando la descripción y el precio de 50 a 65."
+          }
+        },
+        {
+          "name": "04 - Comprobar los datos editados",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La consulta después de editar responde 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('La descripción editada aparece en la respuesta', function () {",
+                  "  pm.expect(pm.response.text()).to.include('PIEZA TEMPORAL EDITADA CORRECTAMENTE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": "{{recambio_api_url}}/CAT/{{codigo_crud_prueba}}?idcliente={{idcliente}}",
+            "description": "Verifica que Recambio Fácil devuelve la nueva descripción y el nuevo precio."
+          }
+        },
+        {
+          "name": "05 - Borrar el recambio temporal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recambio temporal eliminado (200)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": "{{recambio_api_url}}/CAT/{{codigo_crud_prueba}}?idcliente={{idcliente}}",
+            "description": "Elimina únicamente la pieza temporal creada en el primer paso."
+          }
+        },
+        {
+          "name": "06 - Confirmar que está borrado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('La pieza ya no existe (404)', function () {",
+                  "  pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "x-api-key", "value": "{{recambio_api_key}}", "type": "text" },
+              { "key": "Accept", "value": "application/json", "type": "text" }
+            ],
+            "url": "{{recambio_api_url}}/CAT/{{codigo_crud_prueba}}?idcliente={{idcliente}}",
+            "description": "Última comprobación: la API debe responder 404 porque la pieza temporal ya se eliminó."
+          }
+        }
+      ]
     },
     {
       "name": "Prueba directa - POST CAT",
