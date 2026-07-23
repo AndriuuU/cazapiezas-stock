@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ArrowLeft, Warehouse } from "lucide-react";
+import MobileWarehouseNav from "@/components/almacen-desguace/MobileWarehouseNav";
 
 export default function ModuleHeader({ title, subtitle }: { title?: string; subtitle?: string }) {
-  return (
-    <header className="border-b border-zinc-800 bg-zinc-950/90">
+  return (<>
+    <header className="warehouse-module-header border-b border-zinc-800 bg-zinc-950/90">
       <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <span className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-400"><Warehouse size={24} /></span>
@@ -17,5 +18,6 @@ export default function ModuleHeader({ title, subtitle }: { title?: string; subt
         </Link>
       </div>
     </header>
-  );
+    <MobileWarehouseNav />
+  </>);
 }

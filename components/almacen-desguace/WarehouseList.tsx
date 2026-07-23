@@ -51,9 +51,9 @@ const EMPTY_FILTERS: Filters = {
   publicado_online: "", ubicacion: "",
 };
 
-export default function WarehouseList() {
+export default function WarehouseList({ initialView = "almacen" }: { initialView?: ListView }) {
   const [pieces, setPieces] = useState<PiezaDesguace[]>([]);
-  const [view, setView] = useState<ListView>("almacen");
+  const [view, setView] = useState<ListView>(initialView);
   const [categories, setCategories] = useState<string[]>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
@@ -412,15 +412,15 @@ export default function WarehouseList() {
   const lastResult = Math.min(page * pageSize, total);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
+    <main className="warehouse-list-main min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       <ModuleHeader />
-      <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-6 sm:px-6">
+      <div className="mx-auto max-w-[1500px] space-y-4 px-4 py-4 sm:space-y-5 sm:px-6 sm:py-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-black text-white">{view === "almacen" ? "Piezas almacenadas" : view === "vendidas" ? "Piezas vendidas" : "Piezas retiradas"}</h1>
+            <h1 className="text-xl font-black text-white sm:text-2xl">{view === "almacen" ? "Piezas almacenadas" : view === "vendidas" ? "Piezas vendidas" : "Piezas retiradas"}</h1>
             <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} {view === "almacen" ? "piezas disponibles en Almacén Desguace" : view === "vendidas" ? "piezas vendidas y fuera del almacenamiento" : "piezas retiradas del almacén"}.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="warehouse-desktop-actions flex-wrap gap-2">
             <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
               <Archive size={18} /> Cajones
             </Link>
@@ -439,7 +439,7 @@ export default function WarehouseList() {
           </div>
         </div>
 
-        <nav className="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2 sm:grid-cols-3" aria-label="Listados de piezas">
+        <nav className="warehouse-desktop-tabs gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2" aria-label="Listados de piezas">
           <button onClick={() => changeView("almacen")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "almacen" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><Warehouse size={18} /> Almacenadas</button>
           <button onClick={() => changeView("vendidas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "vendidas" ? "bg-emerald-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><ShoppingBag size={18} /> Vendidas</button>
           <button onClick={() => changeView("retiradas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "retiradas" ? "bg-red-500 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><PackageX size={18} /> Retiradas</button>
@@ -520,13 +520,15 @@ export default function WarehouseList() {
           <Pagination page={page} totalPages={totalPages} onPage={setPage} />
         </section>
       </div>
+
       {assignmentPiece && <StorageAssignmentModal piece={assignmentPiece} onClose={() => setAssignmentPiece(null)} onShelf={() => { const piece = assignmentPiece; setAssignmentPiece(null); setLocatingPiece(piece); }} onDrawer={() => { const piece = assignmentPiece; setAssignmentPiece(null); void openDrawerPicker(piece); }} />}
       {locatingPiece && <PlacementModal piece={locatingPiece} onClose={() => setLocatingPiece(null)} onPlaced={(message) => { setSuccess(message); setLocatingPiece(null); void load(); }} />}
       {galleryPiece && <PhotoGalleryModal key={galleryPiece.id} piece={galleryPiece} loading={galleryLoading} onClose={() => setGalleryPiece(null)} />}
       {drawerPiece && <DrawerPickerModal piece={drawerPiece} drawers={drawerOptions} query={drawerQuery} loading={drawerLoading} savingId={drawerSaving} error={drawerError} onQuery={setDrawerQuery} onSelect={(drawer) => void assignDrawer(drawer)} onClose={() => setDrawerPiece(null)} />}
       {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onConfirm={confirmation.onConfirm} onClose={() => setConfirmation(null)} />}
       {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { updateFilter("q", value); setScannerOpen(false); setSuccess(`Código leído: ${value}`); }} />}
-      <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); } [aria-label^="Asignar ubicación"] button.group { transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; } [aria-label^="Asignar ubicación"] button.group > span:first-child { transition: transform 180ms ease; } [aria-label^="Asignar ubicación"] .grid > button.group:first-child:hover { transform: translateY(-2px); border-color: rgb(52 211 153); background: rgba(16, 185, 129, 0.16); box-shadow: 0 12px 28px rgba(6, 78, 59, 0.28); } [aria-label^="Asignar ubicación"] .grid > button.group:last-child:hover { transform: translateY(-2px); border-color: rgb(34 211 238); background: rgba(6, 182, 212, 0.16); box-shadow: 0 12px 28px rgba(8, 51, 68, 0.3); } [aria-label^="Asignar ubicación"] button.group:hover > span:first-child { transform: scale(1.1); } [aria-label^="Asignar ubicación"] button.group:focus-visible { outline: 2px solid rgb(251 191 36); outline-offset: 3px; }`}</style>
+      <style jsx global>{`.warehouse-list-main { padding-bottom: 7rem; } .warehouse-desktop-only, .warehouse-desktop-actions, .warehouse-desktop-tabs { display: none; } .warehouse-mobile-only { display: block; } @media (min-width: 640px) { .warehouse-list-main { padding-bottom: 0; } .warehouse-desktop-only { display: block; } .warehouse-desktop-actions { display: flex; } .warehouse-desktop-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } .warehouse-mobile-only { display: none !important; } }`}</style>
+      <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); } [aria-label^="Asignar ubicación"] button.group { transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; } [aria-label^="Asignar ubicación"] button.group > span:first-child { transition: transform 180ms ease; } [aria-label^="Asignar ubicación"] .grid > button.group:first-child:hover { transform: translateY(-2px); border-color: rgb(52 211 153); background: rgba(16, 185, 129, 0.16); box-shadow: 0 12px 28px rgba(6, 78, 59, 0.28); } [aria-label^="Asignar ubicación"] .grid > button.group:last-child:hover { transform: translateY(-2px); border-color: rgb(34 211 238); background: rgba(6, 182, 212, 0.16); box-shadow: 0 12px 28px rgba(8, 51, 68, 0.3); } [aria-label^="Asignar ubicación"] button.group:hover > span:first-child { transform: scale(1.1); } [aria-label^="Asignar ubicación"] button.group:focus-visible { outline: 2px solid rgb(251 191 36); outline-offset: 3px; } .mobile-nav-item { display: flex; min-height: 3.5rem; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; border-radius: 0.9rem; font-size: 0.68rem; font-weight: 800; transition: color 180ms ease, transform 180ms ease, background-color 180ms ease; } .mobile-nav-item:active { transform: scale(0.9); background: rgba(255,255,255,0.05); } .mobile-nav-item svg { transition: transform 220ms cubic-bezier(.2,.8,.2,1); } .mobile-nav-create { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; color: rgb(251 191 36); font-size: 0.68rem; font-weight: 900; } .mobile-nav-create > span { display: flex; width: 3.5rem; height: 3.5rem; margin-top: -1.6rem; align-items: center; justify-content: center; border-radius: 9999px; border: 4px solid rgb(24 24 27); background: rgb(245 158 11); color: rgb(9 9 11); box-shadow: 0 8px 24px rgba(245,158,11,.3); transition: transform 180ms ease, box-shadow 180ms ease; } .mobile-nav-create:active > span { transform: scale(.9) rotate(90deg); box-shadow: 0 4px 12px rgba(245,158,11,.2); } .mobile-more-option { display: flex; min-height: 4.25rem; align-items: center; gap: .75rem; border-width: 1px; border-radius: 1rem; padding: .8rem; font-size: .82rem; font-weight: 800; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease; } .mobile-more-option:active { transform: scale(.96); } .mobile-more-menu { animation: mobile-menu-enter 220ms cubic-bezier(.2,.8,.2,1); } @keyframes mobile-menu-enter { from { opacity: 0; transform: translateY(24px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } } @media (prefers-reduced-motion: reduce) { .mobile-more-menu { animation: none; } .mobile-nav-item, .mobile-nav-item svg, .mobile-nav-create > span, .mobile-more-option { transition: none; } }`}</style>
     </main>
   );
 }
