@@ -1,5 +1,6 @@
 import "server-only";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
+import { validateRecambioFacilRequiredFields } from "@/lib/recambio-facil-rules";
 
 export type CatPayload = {
   Codigo: string;
@@ -69,10 +70,8 @@ function referenceParts(piece: PiezaDesguace) {
 
 function invalidReferenceFields(piece: PiezaDesguace) {
   const invalid: string[] = [];
-  const principal = text(piece.referencia_principal);
   const oem = text(piece.referencia_oem);
   const equivalents = text(piece.referencias_equivalentes).split(/[;,|\n]+/).map(text).filter(Boolean);
-  if (principal && principal.length < 4) invalid.push("Referencia principal (mínimo 4 caracteres)");
   if (oem && oem.length < 4) invalid.push("Referencia OEM (mínimo 4 caracteres)");
   if (equivalents.some((reference) => reference.length < 4)) invalid.push("Referencias equivalentes (cada una debe tener al menos 4 caracteres)");
   return invalid;
@@ -100,8 +99,7 @@ export function validateCatPiece(piece: PiezaDesguace, config: RecambioFacilConf
   const missing: string[] = [];
   if (!text(piece.codigo_interno)) missing.push("Código");
   if (!config.idcliente) missing.push("IdCliente");
-  if (!text(piece.descripcion) && !text(piece.nombre_pieza)) missing.push("Descripción");
-  if (piece.precio_venta === null || piece.precio_venta === undefined || !Number.isFinite(Number(piece.precio_venta))) missing.push("Precio");
+  missing.push(...validateRecambioFacilRequiredFields({ descripcion: piece.descripcion, precio: piece.precio_venta, referenciaPrincipal: piece.referencia_principal, marca: piece.marca_vehiculo, modelo: piece.modelo_vehiculo }));
   missing.push(...invalidReferenceFields(piece));
   return missing;
 }
@@ -112,7 +110,7 @@ export function buildCatPayload(piece: PiezaDesguace, config: RecambioFacilConfi
   return {
     Codigo: recambioFacilCode(piece, config),
     Idcliente: config.idcliente,
-    Descripcion: text(piece.descripcion) || text(piece.nombre_pieza),
+    Descripcion: text(piece.descripcion),
     Precio: Number(piece.precio_venta),
     Ubicacion: "almacenada",
     Referencia: optional(reference),

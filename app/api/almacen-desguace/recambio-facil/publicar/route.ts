@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordAuditEventsSafely } from "@/lib/almacen-desguace-auditoria";
 import { withPublicPhotos } from "@/lib/almacen-desguace-data";
 import { buildCatPayload, getRecambioFacilConfig, insertCatPiecesBatch, validateCatPiece, type CatBatchItemResponse } from "@/lib/recambio-facil-api";
 import { protectApiOrPostmanRequest } from "@/lib/request-security";
@@ -29,13 +30,13 @@ export async function POST(request: Request) {
   const guard = await protectApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-publish", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
 
+  let auditPieces: PiezaDesguace[] = [];
   try {
     const ids = normalizeIds(await request.json() as { id?: unknown; ids?: unknown });
     if (!ids.length) return NextResponse.json({ error: "Selecciona al menos una pieza." }, { status: 400 });
     if (ids.length > 50) return NextResponse.json({ error: "Se pueden publicar hasta 50 piezas por petición." }, { status: 400 });
 
     const recambioConfig = getRecambioFacilConfig();
-    if (!recambioConfig.apiKey) return NextResponse.json({ error: "Falta configurar RECAMBIO_FACIL_API_KEY." }, { status: 500 });
     const { url, key } = getSupabaseApiConfig();
     const selectParams = new URLSearchParams({
       select: "*,fotos:almacen_desguace_fotos(*)",
@@ -51,6 +52,26 @@ export async function POST(request: Request) {
     if (missingIds.length) return NextResponse.json({ error: "Alguna pieza seleccionada ya no existe. Actualiza el listado." }, { status: 409 });
 
     const pieces = await Promise.all(ids.map((id) => withPublicPhotos(byId.get(id)!)));
+    auditPieces = pieces;
+    if (!recambioConfig.apiKey) {
+      const configError = "Falta configurar RECAMBIO_FACIL_API_KEY.";
+      await recordAuditEventsSafely(pieces.map((piece) => ({
+        pieza_id: piece.id,
+        pieza_codigo: piece.codigo_interno,
+        pieza_nombre: piece.nombre_pieza,
+        cajon_id: piece.cajon_id,
+        tipo_evento: "publicacion_rf",
+        accion: "Error al publicar en R/F",
+        campos_cambiados: [],
+        valor_anterior: { publicado_online: piece.publicado_online },
+        valor_nuevo: { publicado_online: piece.publicado_online },
+        exito: false,
+        error: configError,
+        detalle: "No se inició la publicación porque falta la credencial de Recambio Fácil.",
+        origen: "recambio_facil",
+      })));
+      return NextResponse.json({ error: configError }, { status: 500 });
+    }
     const published: PublicationResult[] = [];
     const skipped: PublicationResult[] = [];
     const failed: PublicationResult[] = [];
@@ -148,8 +169,83 @@ export async function POST(request: Request) {
         }
     }
 
+    const pieceById = new Map(pieces.map((piece) => [piece.id, piece]));
+    await recordAuditEventsSafely([
+      ...published.map((result) => {
+        const piece = pieceById.get(result.id)!;
+        return {
+          pieza_id: piece.id,
+          pieza_codigo: piece.codigo_interno,
+          pieza_nombre: piece.nombre_pieza,
+          cajon_id: piece.cajon_id,
+          tipo_evento: "publicacion_rf" as const,
+          accion: "Publicación correcta en R/F",
+          campos_cambiados: ["publicado_online"],
+          valor_anterior: { publicado_online: false },
+          valor_nuevo: { publicado_online: true },
+          detalle: "Recambio Fácil confirmó la publicación de la pieza.",
+          origen: "recambio_facil",
+        };
+      }),
+      ...skipped.map((result) => {
+        const piece = pieceById.get(result.id)!;
+        const synchronized = /insertada en Recambio F[aá]cil/i.test(result.reason || "");
+        return {
+          pieza_id: piece.id,
+          pieza_codigo: piece.codigo_interno,
+          pieza_nombre: piece.nombre_pieza,
+          cajon_id: piece.cajon_id,
+          tipo_evento: "publicacion_rf" as const,
+          accion: synchronized ? "Ya existía en R/F · sincronizada Online" : "Publicación omitida · ya estaba Online",
+          campos_cambiados: synchronized ? ["publicado_online"] : [],
+          valor_anterior: { publicado_online: piece.publicado_online },
+          valor_nuevo: { publicado_online: true },
+          detalle: result.reason || "La pieza ya constaba como Online.",
+          origen: "recambio_facil",
+          metadata: { ya_existia: true },
+        };
+      }),
+      ...failed.map((result) => {
+        const piece = pieceById.get(result.id)!;
+        return {
+          pieza_id: piece.id,
+          pieza_codigo: piece.codigo_interno,
+          pieza_nombre: piece.nombre_pieza,
+          cajon_id: piece.cajon_id,
+          tipo_evento: "publicacion_rf" as const,
+          accion: "Error al publicar en R/F",
+          campos_cambiados: [],
+          valor_anterior: { publicado_online: piece.publicado_online },
+          valor_nuevo: { publicado_online: piece.publicado_online },
+          exito: false,
+          error: result.error || "Recambio Fácil no confirmó la publicación.",
+          detalle: result.publishedExternally
+            ? "La pieza pudo publicarse externamente, pero no se confirmó como Online en la aplicación."
+            : "La pieza no se marcó como Online.",
+          origen: "recambio_facil",
+          metadata: { publicada_externamente: Boolean(result.publishedExternally) },
+        };
+      }),
+    ]);
+
     return NextResponse.json({ requested: ids.length, published, skipped, failed }, { status: failed.length ? 207 : 200 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudieron publicar las piezas en Recambio Fácil." }, { status: 500 });
+    const detail = error instanceof Error ? error.message : "No se pudieron publicar las piezas en Recambio Fácil.";
+    await recordAuditEventsSafely(auditPieces.map((piece) => ({
+      pieza_id: piece.id,
+      pieza_codigo: piece.codigo_interno,
+      pieza_nombre: piece.nombre_pieza,
+      cajon_id: piece.cajon_id,
+      tipo_evento: "publicacion_rf",
+      accion: "Error inesperado al publicar en R/F",
+      campos_cambiados: [],
+      valor_anterior: { publicado_online: piece.publicado_online },
+      valor_nuevo: { publicado_online: piece.publicado_online },
+      exito: false,
+      error: detail,
+      detalle: "La petición de publicación no pudo completarse.",
+      origen: "recambio_facil",
+    })));
+    return NextResponse.json({ error: detail }, { status: 500 });
   }
 }
