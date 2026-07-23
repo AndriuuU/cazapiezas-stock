@@ -1,10 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  normalizePiezaInput,
-  requiresPublishValidation,
-  validatePieza,
-  validateReadyToPublish,
-} from "@/lib/almacen-desguace";
+import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace, PiezaDesguaceInput } from "@/types/almacen-desguace";
@@ -32,6 +27,7 @@ export async function PATCH(request: Request) {
       ALLOWED_FIELDS.filter((field) => field in normalized).map((field) => [field, normalized[field]])
     ) as PiezaDesguaceInput;
     if (!Object.keys(changes).length) return NextResponse.json({ error: "Elige el cambio que quieres aplicar." }, { status: 400 });
+    if (changes.estado_proceso === "Publicada") Object.assign(changes, { publicado_online: true });
     if (changes.estado_proceso === "Retirada" || changes.estado_proceso === "Vendida") Object.assign(changes, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(changes);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
@@ -48,18 +44,6 @@ export async function PATCH(request: Request) {
     });
     const pieces = await parseSupabaseResponse<PiezaDesguace[]>(selectedResponse);
     if (pieces.length !== ids.length) return NextResponse.json({ error: "Alguna pieza seleccionada ya no existe. Actualiza el listado." }, { status: 409 });
-
-    const invalid = pieces.flatMap((piece) => {
-      const merged = { ...piece, ...changes };
-      if (!requiresPublishValidation(merged.estado_proceso)) return [];
-      const missing = validateReadyToPublish(merged, piece.fotos?.length || 0);
-      return missing.length ? [`${piece.codigo_interno}: ${missing.join(", ")}`] : [];
-    });
-    if (invalid.length) {
-      return NextResponse.json({
-        error: `No se puede aplicar el cambio. Revisa: ${invalid.slice(0, 8).join("; ")}${invalid.length > 8 ? ` y ${invalid.length - 8} más` : ""}.`,
-      }, { status: 400 });
-    }
 
     const updateParams = new URLSearchParams({ id: idsFilter, select: "*" });
     const updateResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {

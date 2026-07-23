@@ -1,7 +1,6 @@
 import {
   ESTADOS_PIEZA,
   ESTADOS_PROCESO,
-  type EstadoProceso,
   type PiezaDesguaceInput,
 } from "@/types/almacen-desguace";
 
@@ -58,19 +57,4 @@ export function validatePieza(input: PiezaDesguaceInput) {
   if ((input.precio_coste ?? 0) < 0 || (input.precio_venta ?? 0) < 0) errors.push("Los precios no pueden ser negativos.");
   if (input.ano_desde && input.ano_hasta && input.ano_hasta < input.ano_desde) errors.push("El año hasta no puede ser anterior al año desde.");
   return errors;
-}
-
-export function validateReadyToPublish(input: PiezaDesguaceInput, photoCount: number) {
-  const missing: string[] = [];
-  if (!input.nombre_pieza) missing.push("nombre");
-  if (!input.referencia_principal && !input.referencia_oem) missing.push("referencia");
-  if (!input.estado_pieza) missing.push("estado");
-  if (input.precio_venta === null || input.precio_venta === undefined) missing.push("precio");
-  if (input.cantidad === null || input.cantidad === undefined) missing.push("cantidad");
-  if (photoCount < 1) missing.push("al menos una fotografía");
-  return missing;
-}
-
-export function requiresPublishValidation(state?: EstadoProceso) {
-  return state === "Lista para publicar" || state === "Publicada";
 }

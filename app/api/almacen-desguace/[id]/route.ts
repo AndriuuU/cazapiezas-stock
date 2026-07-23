@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  normalizePiezaInput, requiresPublishValidation, validatePieza, validateReadyToPublish,
-} from "@/lib/almacen-desguace";
-import { getPhotoCount, getPieza, withPublicPhotos } from "@/lib/almacen-desguace-data";
+import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
+import { getPieza, withPublicPhotos } from "@/lib/almacen-desguace-data";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace, PiezaDesguaceInput } from "@/types/almacen-desguace";
@@ -42,14 +40,10 @@ export async function PATCH(request: Request, context: Context) {
     const normalized = normalizePiezaInput(raw);
     delete normalized.publicado_online;
     const patch = { ...normalized, ...actionPatch(raw.action) };
+    if (patch.estado_proceso === "Publicada") Object.assign(patch, { publicado_online: true });
     if (patch.estado_proceso === "Retirada" || patch.estado_proceso === "Vendida") Object.assign(patch, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(patch);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
-    const merged = { ...current, ...patch };
-    if (requiresPublishValidation(merged.estado_proceso)) {
-      const missing = validateReadyToPublish(merged, await getPhotoCount(id));
-      if (missing.length) return NextResponse.json({ error: `Para publicar faltan: ${missing.join(", ")}.` }, { status: 400 });
-    }
     const { url, key } = getSupabaseApiConfig();
     const params = new URLSearchParams({ id: `eq.${id}`, select: "*" });
     const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {

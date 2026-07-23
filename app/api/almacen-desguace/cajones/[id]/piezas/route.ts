@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requiresPublishValidation, UBICACION_PATTERN } from "@/lib/almacen-desguace";
+import { UBICACION_PATTERN } from "@/lib/almacen-desguace";
 import { getPieza } from "@/lib/almacen-desguace-data";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
@@ -21,7 +21,6 @@ export async function PATCH(request: Request, context: Context) {
       if (piece.cajon_id !== Number(id)) return NextResponse.json({ error: "La pieza no pertenece a este cajón." }, { status: 409 });
       const destination = String(body.ubicacion_destino || "").trim().toUpperCase() || null;
       if (destination && !UBICACION_PATTERN.test(destination)) return NextResponse.json({ error: "La nueva ubicación no tiene un formato válido." }, { status: 400 });
-      if (!destination && requiresPublishValidation(piece.estado_proceso)) return NextResponse.json({ error: "Esta pieza está publicada: indica otra ubicación antes de retirarla del cajón." }, { status: 400 });
       patch = { cajon_id: null, ubicacion: destination };
     } else return NextResponse.json({ error: "Acción no válida." }, { status: 400 });
 

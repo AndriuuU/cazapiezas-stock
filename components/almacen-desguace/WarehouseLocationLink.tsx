@@ -12,7 +12,7 @@ export default function WarehouseLocationLink({ location, compact = false, promi
   if (!parts) return <span className="font-mono text-cyan-300">{location}</span>;
 
   const href = `/almacen-desguace/plano?estanteria=${parts.shelf}&ubicacion=${encodeURIComponent(location)}#plano-fisico`;
-  return <Link href={href} title={`Mostrar ${parts.shelf}, nivel ${parts.level}, hueco ${parts.slot} en el plano`} className={`group/location inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/5 font-bold text-cyan-200 transition hover:border-cyan-400/60 hover:bg-cyan-500/15 ${prominent ? "min-h-12 w-full justify-center px-4 py-3 text-sm" : compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs"}`}>
+  return <Link href={href} title={`Mostrar ${parts.shelf}, nivel ${parts.level}, hueco ${parts.slot} en el plano`} className={`group/location inline-flex items-center gap-1.5 rounded-lg border font-bold text-cyan-200 transition ${prominent ? "min-h-12 w-full justify-center border-zinc-700 bg-zinc-950 px-4 py-3 text-sm hover:border-cyan-500/50 hover:bg-zinc-800" : `border-cyan-500/20 bg-cyan-500/5 hover:border-cyan-400/60 hover:bg-cyan-500/15 ${compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs"}`}`}>
     <MapPin size={prominent ? 18 : compact ? 12 : 14} className="shrink-0 text-cyan-400" />
     <span>{parts.shelf} · N{parts.level} · H{parts.slot}</span>
   </Link>;

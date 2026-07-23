@@ -178,6 +178,39 @@ export interface MovimientoCajon {
   pieza?: Pick<PiezaDesguace, "id" | "codigo_interno" | "nombre_pieza"> | null;
 }
 
+export type TipoEventoAlmacen =
+  | "creacion_pieza"
+  | "edicion_pieza"
+  | "eliminacion_pieza"
+  | "cambio_estado"
+  | "cambio_proceso"
+  | "cambio_ubicacion"
+  | "cambio_cajon"
+  | "cambio_online"
+  | "foto"
+  | "publicacion_rf"
+  | "online_manual";
+
+export interface EventoAlmacen {
+  id: number;
+  pieza_id: number | null;
+  pieza_codigo: string;
+  pieza_nombre: string | null;
+  cajon_id: number | null;
+  tipo_evento: TipoEventoAlmacen;
+  accion: string;
+  campos_cambiados: string[];
+  valor_anterior: Record<string, unknown> | null;
+  valor_nuevo: Record<string, unknown> | null;
+  exito: boolean;
+  detalle: string | null;
+  error: string | null;
+  origen: string;
+  usuario_nombre: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface CajonDesguace {
   id: number;
   codigo: string;

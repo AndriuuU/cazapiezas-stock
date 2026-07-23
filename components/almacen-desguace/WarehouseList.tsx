@@ -344,15 +344,34 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
     }
     const value = bulkValue;
     const selectedCount = selected.size;
+    const marksAlreadyPublished = bulkField === "estado_proceso" && value === "Publicada";
     setConfirmation({
       title: `¿Modificar ${selectedCount} piezas?`,
-      description: `Se aplicará el nuevo valor a todas las piezas seleccionadas. Esta acción puede tardar unos segundos.`,
+      description: marksAlreadyPublished
+        ? "Se marcarán internamente como Publicadas y Online porque ya existen en Recambio Fácil. No se enviará ninguna pieza ni se realizará ninguna llamada de publicación."
+        : "Se aplicará el nuevo valor a todas las piezas seleccionadas. Esta acción puede tardar unos segundos.",
       confirmLabel: `Aplicar a ${selectedCount}`,
       onConfirm: () => performBulkChange(value),
     });
   }
 
-  async function performBulkChange(value: string) {
+  function requestBulkProcessChange(status: "Vendida" | "Enviada" | "Retirada") {
+    const selectedCount = selected.size;
+    const descriptions = {
+      Vendida: "Las piezas saldrán del almacenamiento, dejarán libre su ubicación y dejarán de estar Online.",
+      Enviada: "Las piezas cambiarán su proceso a Enviada. Conservarán su ubicación hasta que se marquen como vendidas o retiradas.",
+      Retirada: "Las piezas saldrán del almacenamiento, dejarán libre su ubicación y aparecerán en la lista de retiradas.",
+    };
+    setConfirmation({
+      title: `¿Marcar ${selectedCount} piezas como ${status.toLowerCase()}${selectedCount === 1 ? "" : "s"}?`,
+      description: descriptions[status],
+      confirmLabel: `Sí, marcar ${selectedCount}`,
+      tone: status === "Retirada" ? "red" : "amber",
+      onConfirm: () => performBulkChange(status, "estado_proceso"),
+    });
+  }
+
+  async function performBulkChange(value: string, field: BulkField = bulkField) {
     setBulkLoading(true);
     setError("");
     setSuccess("");
@@ -360,7 +379,7 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
       const response = await fetch("/api/almacen-desguace/bulk", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [...selected], changes: { [bulkField]: value } }),
+        body: JSON.stringify({ ids: [...selected], changes: { [field]: value } }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "No se pudo aplicar el cambio.");
@@ -415,10 +434,15 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
     <main className="warehouse-list-main min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
       <ModuleHeader />
       <div className="mx-auto max-w-[1500px] space-y-4 px-4 py-4 sm:space-y-5 sm:px-6 sm:py-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+        <div className="warehouse-list-heading flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-xl font-black text-white sm:text-2xl">{view === "almacen" ? "Piezas almacenadas" : view === "vendidas" ? "Piezas vendidas" : "Piezas retiradas"}</h1>
             <p className="text-sm text-zinc-500">{total.toLocaleString("es-ES")} {view === "almacen" ? "piezas disponibles en Almacén Desguace" : view === "vendidas" ? "piezas vendidas y fuera del almacenamiento" : "piezas retiradas del almacén"}.</p>
+          </div>
+          <div className="warehouse-mobile-only">
+            <Link href="/" className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-sm font-bold text-zinc-200 hover:border-amber-500/50 hover:text-amber-300">
+              <ChevronLeft size={17} /> Volver
+            </Link>
           </div>
           <div className="warehouse-desktop-actions flex-wrap gap-2">
             <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
@@ -473,29 +497,55 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
         </section>
 
         {selected.size > 0 && (
-          <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-            {view === "almacen" && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 font-black text-cyan-200"><CloudUpload size={19} /> Publicar en Recambio Fácil</p><p className="mt-1 text-xs text-cyan-100/70">Envía las piezas seleccionadas o confirma su estado si ya existen en la plataforma.</p></div><div className="flex flex-col gap-2 sm:flex-row"><button onClick={confirmSelectedOnline} disabled={publishing} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-black text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"><CheckCircle2 size={18} /> Ya existen · marcar Online</button><button onClick={() => setConfirmation({ title: `¿Publicar ${selected.size} piezas en Recambio Fácil?`, description: "Se enviarán en lotes de hasta 10 piezas. Solo se marcarán como Online los lotes que Recambio Fácil confirme correctamente.", confirmLabel: `Sí, publicar ${selected.size}`, onConfirm: () => publishPieces([...selected]) })} disabled={publishing} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 font-black text-zinc-950 hover:bg-cyan-400 disabled:opacity-50">{publishing ? <Loader2 className="animate-spin" size={18} /> : <CloudUpload size={18} />} Publicar {selected.size}</button></div></div>}
-            {view === "retiradas" && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 font-black text-emerald-200"><RotateCcw size={19} /> Devolver al almacén</p><p className="mt-1 text-xs text-emerald-100/70">Recupera las piezas retiradas para revisarlas y ubicarlas de nuevo.</p></div><button onClick={restoreSelectedRetired} disabled={bulkLoading} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{bulkLoading ? <Loader2 className="animate-spin" size={18} /> : <RotateCcw size={18} />} Devolver {selected.size}</button></div>}
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-              <div className="min-w-48">
-                <p className="font-bold text-amber-200">{selected.size.toLocaleString("es-ES")} {selected.size === total && total > 0 ? "piezas seleccionadas · selección completa" : "piezas seleccionadas"}</p>
-                <button onClick={() => setSelected(new Set())} className="text-xs text-amber-300/70 hover:text-amber-200">Cancelar selección</button>
-              </div>
-              <FieldLabel label="Dato que quieres modificar">
-                <select value={bulkField} onChange={(event) => { setBulkField(event.target.value as BulkField); setBulkValue(""); }} className="bulk-input">
-                  <option value="estado_pieza">Estado de la pieza</option><option value="estado_proceso">Estado del proceso</option>
-                </select>
-              </FieldLabel>
-              <FieldLabel label="Nuevo valor"><BulkValue field={bulkField} value={bulkValue} onChange={setBulkValue} /></FieldLabel>
-              <button onClick={() => void applyBulkChange()} disabled={bulkLoading || !bulkValue} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 font-bold text-zinc-950 hover:bg-amber-400 disabled:opacity-50">
-                {bulkLoading ? <Loader2 className="animate-spin" size={17} /> : <SlidersHorizontal size={17} />} Aplicar a {selected.size}
-              </button>
+          <section className="rounded-2xl border border-zinc-700 bg-zinc-900 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3 border-b border-zinc-800 pb-2">
+              <p className="text-sm font-black text-white">
+                {selected.size.toLocaleString("es-ES")} {selected.size === 1 ? "pieza seleccionada" : "piezas seleccionadas"}
+                {selected.size === total && total > 0 && <span className="ml-1 text-zinc-500">· todas</span>}
+              </p>
+              <button onClick={() => setSelected(new Set())} className="shrink-0 text-xs font-bold text-zinc-400 hover:text-white">Cancelar</button>
             </div>
+
+            {view === "almacen" && (
+              <div className="bulk-actions-grid">
+                <div className="rounded-xl border border-zinc-700 bg-zinc-950/70 p-2.5">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-zinc-400"><CloudUpload size={15} /> Recambio Fácil</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={confirmSelectedOnline} disabled={publishing} title="Usar si las piezas ya existen en Recambio Fácil" className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-xs font-bold text-zinc-200 hover:border-emerald-500/60 hover:bg-zinc-800 disabled:opacity-50"><CheckCircle2 className="shrink-0 text-emerald-400" size={16} /><span>Ya Online</span></button>
+                    <button onClick={() => setConfirmation({ title: `¿Publicar ${selected.size} piezas en Recambio Fácil?`, description: "Antes de enviarlas se comprobarán Descripción, Referencia principal de al menos 4 caracteres, Precio, Marca y Modelo. Se enviarán en lotes de hasta 10 piezas y solo se marcarán Online las confirmadas por Recambio Fácil.", confirmLabel: `Sí, publicar ${selected.size}`, onConfirm: () => publishPieces([...selected]) })} disabled={publishing} title="Requiere descripción, referencia de 4 caracteres, precio, marca y modelo" className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-xs font-bold text-zinc-200 hover:border-cyan-500/60 hover:bg-zinc-800 disabled:opacity-50">{publishing ? <Loader2 className="shrink-0 animate-spin text-cyan-400" size={16} /> : <CloudUpload className="shrink-0 text-cyan-400" size={16} />}<span>Publicar ({selected.size})</span></button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-700 bg-zinc-950/70 p-2.5">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-zinc-400"><Send size={15} /> Cambiar proceso</p>
+                  <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+                    <button onClick={() => requestBulkProcessChange("Vendida")} disabled={bulkLoading} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-1 text-[11px] font-bold text-zinc-200 hover:border-emerald-500/60 hover:bg-zinc-800 disabled:opacity-50"><ShoppingBag className="shrink-0 text-emerald-400" size={15} />Vendida</button>
+                    <button onClick={() => requestBulkProcessChange("Enviada")} disabled={bulkLoading} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-1 text-[11px] font-bold text-zinc-200 hover:border-cyan-500/60 hover:bg-zinc-800 disabled:opacity-50"><Send className="shrink-0 text-cyan-400" size={15} />Enviada</button>
+                    <button onClick={() => requestBulkProcessChange("Retirada")} disabled={bulkLoading} className="inline-flex min-h-10 min-w-0 items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-1 text-[11px] font-bold text-zinc-200 hover:border-red-500/60 hover:bg-zinc-800 disabled:opacity-50"><PackageX className="shrink-0 text-red-400" size={15} />Retirada</button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-700 bg-zinc-950/70 p-2.5">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-black uppercase tracking-wide text-zinc-400"><SlidersHorizontal size={15} /> Modificar dato</p>
+                  <div className="grid gap-2" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto" }}>
+                    <select aria-label="Dato que quieres modificar" value={bulkField} onChange={(event) => { setBulkField(event.target.value as BulkField); setBulkValue(""); }} className="bulk-input min-w-0 text-xs">
+                      <option value="estado_pieza">Estado pieza</option><option value="estado_proceso">Proceso</option>
+                    </select>
+                    <BulkValue field={bulkField} value={bulkValue} onChange={setBulkValue} />
+                    <button aria-label={`Aplicar a ${selected.size} piezas`} title={`Aplicar a ${selected.size}`} onClick={() => void applyBulkChange()} disabled={bulkLoading || !bulkValue} className="inline-flex min-h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-amber-400 hover:border-amber-500/60 hover:bg-zinc-800 disabled:opacity-40">
+                      {bulkLoading ? <Loader2 className="animate-spin" size={17} /> : <SlidersHorizontal size={17} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {view === "retiradas" && <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-2.5"><p className="flex items-center gap-2 text-sm font-bold text-zinc-200"><RotateCcw className="text-emerald-400" size={17} /> Devolver al almacén</p><button onClick={restoreSelectedRetired} disabled={bulkLoading} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs font-bold text-zinc-200 hover:border-emerald-500/60 hover:bg-zinc-800 disabled:opacity-50">{bulkLoading ? <Loader2 className="animate-spin text-emerald-400" size={16} /> : <RotateCcw className="text-emerald-400" size={16} />} Devolver {selected.size}</button></div>}
           </section>
         )}
 
-        {error && <div role="alert" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto flex max-h-56 max-w-2xl items-start justify-between gap-3 overflow-y-auto rounded-2xl border border-red-400/40 bg-red-950/95 p-4 text-sm font-semibold text-red-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{error}</span><button onClick={() => setError("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-red-300 hover:bg-red-500/20 hover:text-white"><X size={18} /></button></div>}
-        {success && <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-[80] mx-auto flex max-w-2xl items-start justify-between gap-3 rounded-2xl border border-emerald-400/40 bg-emerald-950/95 p-4 text-sm font-semibold text-emerald-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{success}</span><button onClick={() => setSuccess("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-emerald-300 hover:bg-emerald-500/20 hover:text-white"><X size={18} /></button></div>}
+        {error && <div role="alert" className="warehouse-list-notice fixed left-4 right-4 z-[80] mx-auto flex max-h-56 max-w-2xl items-start justify-between gap-3 overflow-y-auto rounded-2xl border border-red-400/40 bg-red-950/95 p-4 text-sm font-semibold text-red-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{error}</span><button onClick={() => setError("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-red-300 hover:bg-red-500/20 hover:text-white"><X size={18} /></button></div>}
+        {success && <div role="status" aria-live="polite" className="warehouse-list-notice fixed left-4 right-4 z-[80] mx-auto flex max-w-2xl items-start justify-between gap-3 rounded-2xl border border-emerald-400/40 bg-emerald-950/95 p-4 text-sm font-semibold text-emerald-100 shadow-2xl backdrop-blur sm:left-auto sm:mx-0 sm:min-w-96"><span>{success}</span><button onClick={() => setSuccess("")} title="Cerrar aviso" className="shrink-0 rounded-lg p-1 text-emerald-300 hover:bg-emerald-500/20 hover:text-white"><X size={18} /></button></div>}
 
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3 text-sm text-zinc-400">
@@ -527,6 +577,9 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
       {drawerPiece && <DrawerPickerModal piece={drawerPiece} drawers={drawerOptions} query={drawerQuery} loading={drawerLoading} savingId={drawerSaving} error={drawerError} onQuery={setDrawerQuery} onSelect={(drawer) => void assignDrawer(drawer)} onClose={() => setDrawerPiece(null)} />}
       {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onConfirm={confirmation.onConfirm} onClose={() => setConfirmation(null)} />}
       {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { updateFilter("q", value); setScannerOpen(false); setSuccess(`Código leído: ${value}`); }} />}
+      <style jsx global>{`.warehouse-list-notice { bottom: calc(5.25rem + env(safe-area-inset-bottom) + .75rem); } @media (min-width: 640px) { .warehouse-list-notice { bottom: 1rem; } }`}</style>
+      <style jsx global>{`@media (max-width: 639px) { .warehouse-list-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; } }`}</style>
+      <style jsx global>{`.bulk-actions-grid { display: grid; gap: .5rem; } @media (min-width: 1280px) { .bulk-actions-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.45fr); } }`}</style>
       <style jsx global>{`.warehouse-list-main { padding-bottom: 7rem; } .warehouse-desktop-only, .warehouse-desktop-actions, .warehouse-desktop-tabs { display: none; } .warehouse-mobile-only { display: block; } @media (min-width: 640px) { .warehouse-list-main { padding-bottom: 0; } .warehouse-desktop-only { display: block; } .warehouse-desktop-actions { display: flex; } .warehouse-desktop-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } .warehouse-mobile-only { display: none !important; } }`}</style>
       <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); } [aria-label^="Asignar ubicación"] button.group { transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; } [aria-label^="Asignar ubicación"] button.group > span:first-child { transition: transform 180ms ease; } [aria-label^="Asignar ubicación"] .grid > button.group:first-child:hover { transform: translateY(-2px); border-color: rgb(52 211 153); background: rgba(16, 185, 129, 0.16); box-shadow: 0 12px 28px rgba(6, 78, 59, 0.28); } [aria-label^="Asignar ubicación"] .grid > button.group:last-child:hover { transform: translateY(-2px); border-color: rgb(34 211 238); background: rgba(6, 182, 212, 0.16); box-shadow: 0 12px 28px rgba(8, 51, 68, 0.3); } [aria-label^="Asignar ubicación"] button.group:hover > span:first-child { transform: scale(1.1); } [aria-label^="Asignar ubicación"] button.group:focus-visible { outline: 2px solid rgb(251 191 36); outline-offset: 3px; } .mobile-nav-item { display: flex; min-height: 3.5rem; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; border-radius: 0.9rem; font-size: 0.68rem; font-weight: 800; transition: color 180ms ease, transform 180ms ease, background-color 180ms ease; } .mobile-nav-item:active { transform: scale(0.9); background: rgba(255,255,255,0.05); } .mobile-nav-item svg { transition: transform 220ms cubic-bezier(.2,.8,.2,1); } .mobile-nav-create { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; color: rgb(251 191 36); font-size: 0.68rem; font-weight: 900; } .mobile-nav-create > span { display: flex; width: 3.5rem; height: 3.5rem; margin-top: -1.6rem; align-items: center; justify-content: center; border-radius: 9999px; border: 4px solid rgb(24 24 27); background: rgb(245 158 11); color: rgb(9 9 11); box-shadow: 0 8px 24px rgba(245,158,11,.3); transition: transform 180ms ease, box-shadow 180ms ease; } .mobile-nav-create:active > span { transform: scale(.9) rotate(90deg); box-shadow: 0 4px 12px rgba(245,158,11,.2); } .mobile-more-option { display: flex; min-height: 4.25rem; align-items: center; gap: .75rem; border-width: 1px; border-radius: 1rem; padding: .8rem; font-size: .82rem; font-weight: 800; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease; } .mobile-more-option:active { transform: scale(.96); } .mobile-more-menu { animation: mobile-menu-enter 220ms cubic-bezier(.2,.8,.2,1); } @keyframes mobile-menu-enter { from { opacity: 0; transform: translateY(24px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } } @media (prefers-reduced-motion: reduce) { .mobile-more-menu { animation: none; } .mobile-nav-item, .mobile-nav-item svg, .mobile-nav-create > span, .mobile-more-option { transition: none; } }`}</style>
     </main>
@@ -567,7 +620,7 @@ function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onD
       </div>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large /><RecambioFacilLink piece={piece} /></div>
-    <div className="mt-3 rounded-xl border border-cyan-500/15 bg-zinc-950/70 p-3">
+    <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3">
       <p className="mb-2 text-sm font-black text-cyan-300">Ubicación en el almacén</p>
       {piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button>}
     </div>
@@ -609,7 +662,7 @@ function DrawerPickerModal({ piece, drawers, query, loading, savingId, error, on
         {piece.cajon && <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"><Archive className="text-amber-300" /><div><p className="text-xs text-zinc-500">Cajón actual</p><p className="font-bold text-white">{piece.cajon.codigo} · {piece.cajon.nombre}</p><p className="font-mono text-xs text-zinc-500">{piece.cajon.ubicacion}</p></div></div>}
         {error && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
         {showRecommendation && <section className="mb-4 overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-500/10"><div className="flex items-center gap-2 border-b border-emerald-500/20 px-4 py-2.5 text-emerald-200"><Sparkles size={17} /><p className="text-xs font-black uppercase tracking-wide">Cajón recomendado</p></div><div className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-amber-300">{recommendation.cajon.codigo}</span><span className="rounded-full bg-black/20 px-2 py-1 text-[10px] font-bold text-emerald-200">{recommendation.cajon.cantidad_piezas}/{recommendation.cajon.capacidad_maxima}</span></div><h3 className="mt-1 whitespace-normal break-words text-base font-black leading-5 text-white sm:text-lg">{recommendation.cajon.nombre}</h3><p className="mt-1 font-mono text-xs text-cyan-300">{recommendation.cajon.ubicacion}</p><div className="mt-2 flex flex-wrap gap-1.5">{recommendation.motivos.map((reason) => <span key={reason} className="rounded-lg border border-emerald-500/20 bg-black/15 px-2 py-1 text-[11px] text-emerald-100">{reason}</span>)}</div></div><button onClick={() => onSelect(recommendation.cajon)} disabled={savingId !== null} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{savingId === recommendation.cajon.id ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}{piece.cajon_id ? "Trasladar aquí" : "Guardar aquí"}</button></div></section>}
-        <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input autoFocus value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar otro cajón por código, nombre o ubicación..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label>
+        <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Buscar otro cajón por código, nombre o ubicación..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label>
         {loading ? <div className="flex items-center justify-center gap-2 py-12 text-zinc-400"><Loader2 className="animate-spin text-cyan-400" /> Buscando cajones con espacio...</div> : listedDrawers.length ? <><p className="mb-3 mt-5 px-1 text-xs font-black uppercase tracking-wide text-zinc-500">{showRecommendation ? "Otros cajones disponibles" : "Cajones disponibles"}</p><div className="grid gap-3">{listedDrawers.map((drawer) => {
           const current = drawer.id === piece.cajon_id;
           return <article key={drawer.id} className={`overflow-hidden rounded-2xl border ${current ? "border-amber-500/40 bg-amber-500/5" : "border-zinc-700 bg-zinc-950"}`}><div className="p-4 sm:p-5"><div className="flex flex-wrap items-center gap-2"><p className="font-mono text-sm font-black text-amber-300">{drawer.codigo}</p><span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-bold text-zinc-300">{drawer.cantidad_piezas}/{drawer.capacidad_maxima}</span></div><h3 className="mt-2 whitespace-normal break-words text-base font-black leading-6 text-white sm:text-lg">{drawer.nombre}</h3><p className="mt-1.5 break-all font-mono text-xs text-cyan-300">{drawer.ubicacion}</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800"><div className="h-full bg-cyan-500" style={{ width: `${drawer.porcentaje_ocupacion}%` }} /></div><button onClick={() => onSelect(drawer)} disabled={current || savingId !== null} className={`mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black ${current ? "border border-amber-500/30 text-amber-300" : "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"} disabled:opacity-50`}>{savingId === drawer.id ? <Loader2 className="animate-spin" size={17} /> : current ? <CheckCircle2 size={17} /> : <PackagePlus size={17} />}{current ? "Este es el cajón actual" : piece.cajon_id ? "Trasladar a este cajón" : "Guardar en este cajón"}</button></div></article>;
@@ -637,12 +690,11 @@ function Pagination({ page, totalPages, onPage }: { page: number; totalPages: nu
 
 function BulkValue({ field, value, onChange }: { field: BulkField; value: string; onChange: (value: string) => void }) {
   if (field === "estado_pieza") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona estado</option>{ESTADOS_PIEZA.map((item) => <option key={item}>{item}</option>)}</select>;
-  if (field === "estado_proceso") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona proceso</option>{ESTADOS_PROCESO.map((item) => <option key={item}>{item}</option>)}</select>;
+  if (field === "estado_proceso") return <select value={value} onChange={(event) => onChange(event.target.value)} className="bulk-input"><option value="">Selecciona proceso</option>{ESTADOS_PROCESO.map((item) => <option key={item} value={item}>{item === "Publicada" ? "Publicada (ya existe en R/F)" : item}</option>)}</select>;
   return null;
 }
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: ReactNode }) { return <select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white focus:border-amber-500 focus:outline-none">{children}</select>; }
-function FieldLabel({ label, children }: { label: string; children: ReactNode }) { return <label className="min-w-56 flex-1"><span className="mb-1 block text-xs text-amber-200/70">{label}</span>{children}</label>; }
 function PrettyCheckbox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) { return <label title={label} className="inline-flex cursor-pointer items-center gap-2"><input type="checkbox" checked={checked} onChange={onChange} aria-label={label} className="sr-only" /><span className={`flex h-5 w-5 items-center justify-center rounded-md border transition ${checked ? "border-amber-400 bg-amber-400 text-zinc-950 shadow-[0_0_10px_rgba(251,191,36,0.2)]" : "border-zinc-600 bg-zinc-900 text-transparent hover:border-amber-500"}`}><Check size={14} strokeWidth={3} /></span></label>; }
 function OnlineBadge({ online, large = false }: { online: boolean; large?: boolean }) { return online ? <span className={`inline-flex items-center gap-1 rounded-full bg-emerald-500/10 font-bold text-emerald-300 ${large ? "min-h-10 px-3 py-2 text-sm" : "px-2 py-1 text-[10px]"}`}><CheckCircle2 size={large ? 16 : 12} /> Online</span> : <span className={`inline-flex rounded-full bg-zinc-800 font-semibold text-zinc-500 ${large ? "min-h-10 items-center px-3 py-2 text-sm" : "px-2 py-1 text-[10px]"}`}>No online</span>; }
 function DetailItem({ label, value }: { label: string; value: string | number | null | undefined }) { return <div className="rounded-lg bg-zinc-900 px-3 py-2"><span className="block text-[10px] uppercase text-zinc-600">{label}</span><span className="text-zinc-300">{value || "Sin indicar"}</span></div>; }

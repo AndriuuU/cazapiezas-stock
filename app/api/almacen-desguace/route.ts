@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { normalizePiezaInput, requiresPublishValidation, validatePieza, validateReadyToPublish } from "@/lib/almacen-desguace";
+import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
@@ -122,19 +122,10 @@ export async function POST(request: Request) {
 
   try {
     const input = normalizePiezaInput(await request.json());
-    input.publicado_online = false;
+    input.publicado_online = input.estado_proceso === "Publicada";
     if (input.estado_proceso === "Retirada" || input.estado_proceso === "Vendida") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(input);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
-    if (requiresPublishValidation(input.estado_proceso)) {
-      const missing = validateReadyToPublish(input, 0);
-      if (missing.length) {
-        return NextResponse.json(
-          { error: `Para publicar faltan: ${missing.join(", ")}. Guarda primero el borrador y añade sus fotografías.` },
-          { status: 400 }
-        );
-      }
-    }
 
     const { url, key } = getSupabaseApiConfig();
     const response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?select=*`, {
