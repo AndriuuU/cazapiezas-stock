@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPhotoCount, getPieza } from "@/lib/almacen-desguace-data";
 import { protectApiRequest } from "@/lib/request-security";
+import { PHOTO_UPLOAD_MAX_BYTES } from "@/lib/photo-upload";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { FotoDesguace } from "@/types/almacen-desguace";
 
@@ -35,11 +36,29 @@ export async function POST(request: Request, context: Context) {
       }
       return NextResponse.json(created, { status: 201 });
     }
-    const form = await request.formData();
-    const files = form.getAll("fotos").filter((item): item is File => item instanceof File);
+    let files: File[];
+    if (contentType.startsWith("image/")) {
+      const declaredSize = Number(request.headers.get("content-length") || 0);
+      if (declaredSize > PHOTO_UPLOAD_MAX_BYTES) {
+        return NextResponse.json({ error: "La fotografía supera el máximo de 5 MB." }, { status: 413 });
+      }
+      const bytes = await request.arrayBuffer();
+      if (!bytes.byteLength) return NextResponse.json({ error: "La fotografía llegó vacía." }, { status: 400 });
+      if (bytes.byteLength > PHOTO_UPLOAD_MAX_BYTES) {
+        return NextResponse.json({ error: "La fotografía supera el máximo de 5 MB." }, { status: 413 });
+      }
+      files = [new File([bytes], photoName(request.headers.get("x-photo-name")), { type: contentType.split(";", 1)[0] })];
+    } else {
+      try {
+        const form = await request.formData();
+        files = form.getAll("fotos").filter((item): item is File => item instanceof File);
+      } catch {
+        return NextResponse.json({ error: "No se pudo leer la fotografía. Vuelve a seleccionarla e inténtalo de nuevo." }, { status: 400 });
+      }
+    }
     if (!files.length) return NextResponse.json({ error: "Selecciona al menos una foto." }, { status: 400 });
-    if (files.some((file) => !file.type.startsWith("image/") || file.size > 10 * 1024 * 1024)) {
-      return NextResponse.json({ error: "Solo se permiten imágenes de hasta 10 MB." }, { status: 400 });
+    if (files.some((file) => !file.type.startsWith("image/") || file.size > PHOTO_UPLOAD_MAX_BYTES)) {
+      return NextResponse.json({ error: "La fotografía debe ocupar como máximo 5 MB después de optimizarla." }, { status: 400 });
     }
     const { url, key } = getSupabaseApiConfig();
     let count = await getPhotoCount(id);
@@ -75,6 +94,12 @@ function isRemoteImageUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function photoName(value: string | null) {
+  if (!value) return "fotografia.jpg";
+  try { return decodeURIComponent(value); }
+  catch { return "fotografia.jpg"; }
 }
 
 export async function PATCH(request: Request, context: Context) {

@@ -1,0 +1,4 @@
+export const PHOTO_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+export const PHOTO_OPTIMIZED_TARGET_BYTES = Math.floor(4.5 * 1024 * 1024);
+export const PHOTO_SOURCE_MAX_BYTES = 30 * 1024 * 1024;
+export const PHOTO_MAX_DIMENSION = 2000;
