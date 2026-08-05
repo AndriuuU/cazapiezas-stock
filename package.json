@@ -1,12 +1,14 @@
 {
   "name": "cazapiezas-stock",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "print:bridge": "node scripts/print-bridge.cjs",
+    "print:bridge:test": "node scripts/print-bridge.cjs --self-test",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version"

@@ -4,8 +4,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudCog, CloudUpload, Edit3, Eye, FilterX,
-  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackageCheck, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
+  Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudUpload, Edit3, Eye, FilterX,
+  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
   RotateCcw, SlidersHorizontal, Sparkles, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
@@ -14,6 +14,7 @@ import ConfirmDialog from "@/components/almacen-desguace/ConfirmDialog";
 import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
 import RecambioFacilLink from "@/components/almacen-desguace/RecambioFacilLink";
 import WarehouseLocationLink from "@/components/almacen-desguace/WarehouseLocationLink";
+import LabelButton from "@/components/almacen-desguace/LabelButton";
 import { recomendarCajon } from "@/lib/almacen-desguace-cajones-recomendacion";
 import { ESTADOS_PIEZA, ESTADOS_PROCESO, type CajonDesguace, type PiezaDesguace } from "@/types/almacen-desguace";
 
@@ -576,7 +577,7 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
       {galleryPiece && <PhotoGalleryModal key={galleryPiece.id} piece={galleryPiece} loading={galleryLoading} onClose={() => setGalleryPiece(null)} />}
       {drawerPiece && <DrawerPickerModal piece={drawerPiece} drawers={drawerOptions} query={drawerQuery} loading={drawerLoading} savingId={drawerSaving} error={drawerError} onQuery={setDrawerQuery} onSelect={(drawer) => void assignDrawer(drawer)} onClose={() => setDrawerPiece(null)} />}
       {confirmation && <ConfirmDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} tone={confirmation.tone} onConfirm={confirmation.onConfirm} onClose={() => setConfirmation(null)} />}
-      {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { updateFilter("q", value); setScannerOpen(false); setSuccess(`Código leído: ${value}`); }} />}
+      {scannerOpen && <BarcodeScanner onClose={() => setScannerOpen(false)} onScan={(value) => { const message = `Código leído: ${value}`; updateFilter("q", value); setScannerOpen(false); setSuccess(message); window.setTimeout(() => setSuccess((current) => current === message ? "" : current), 1600); }} />}
       <style jsx global>{`.warehouse-list-notice { bottom: calc(5.25rem + env(safe-area-inset-bottom) + .75rem); } @media (min-width: 640px) { .warehouse-list-notice { bottom: 1rem; } }`}</style>
       <style jsx global>{`@media (max-width: 639px) { .warehouse-list-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; } }`}</style>
       <style jsx global>{`.bulk-actions-grid { display: grid; gap: .5rem; } @media (min-width: 1280px) { .bulk-actions-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.45fr); } }`}</style>
@@ -642,7 +643,7 @@ function ActionPanel({ piece, onLocate, onDrawer, onPhotos, onAction }: { piece:
   const retired = piece.estado_proceso === "Retirada";
   const sold = piece.estado_proceso === "Vendida";
   const outsideStorage = retired || sold;
-  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}#recambio-facil`} icon={<CloudCog />} label="Gestionar R/F" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label={outsideStorage ? "Editar o recuperar" : "Editar"} /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" />{!outsideStorage && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Asignar ubicación" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label={piece.cajon_id ? "Cambiar cajón" : "Cajón directo"} /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" />{!piece.publicado_online && <ActionButton onClick={() => onAction("publicar")} icon={<CloudUpload />} label="Publicar en R/F" />}<ActionButton onClick={() => onAction("reservar")} icon={<PackageCheck />} label="Reservar" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton onClick={() => onAction("enviar")} icon={<Send />} label="Enviada" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{outsideStorage && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${sold ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-red-500/20 bg-red-500/5 text-red-200"}`}>{sold ? "Esta pieza está vendida, fuera del almacenamiento y no ocupa ningún hueco. Puedes recuperarla cambiando su proceso desde Editar." : "Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar."}</p>}</div>;
+  return <div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wide text-amber-300">Acciones de la pieza</p><span className="font-mono text-[10px] text-zinc-600">{piece.codigo_interno}</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"><ActionLink href={`/almacen-desguace/${piece.id}`} icon={<Eye />} label="Ver ficha" /><ActionLink href={`/almacen-desguace/${piece.id}/editar`} icon={<Edit3 />} label="Editar" /><ActionButton onClick={onPhotos} icon={<Images />} label="Ver fotos" /><ActionLink href={`/almacen-desguace/${piece.id}#fotografias`} icon={<Camera />} label="Subir fotos" /><LabelButton pieza={piece} variant="action" />{!outsideStorage && <><ActionButton onClick={onLocate} icon={<MapPin />} label="Asignar ubicación" /><ActionButton onClick={onDrawer} icon={<PackagePlus />} label="Asignar cajón" /><ActionButton onClick={() => onAction("vender")} icon={<ShoppingBag />} label="Vendida" /><ActionButton danger onClick={() => onAction("retirar")} icon={<PackageX />} label="Retirar" /></>}</div>{outsideStorage && <p className={`mt-3 rounded-lg border px-3 py-2 text-xs ${sold ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-red-500/20 bg-red-500/5 text-red-200"}`}>{sold ? "Esta pieza está vendida, fuera del almacenamiento y no ocupa ningún hueco. Puedes recuperarla cambiando su proceso desde Editar." : "Esta pieza está retirada y no ocupa ninguna ubicación. Puedes recuperarla cambiando su proceso desde Editar."}</p>}</div>;
 }
 
 function StorageAssignmentModal({ piece, onClose, onShelf, onDrawer }: { piece: PiezaDesguace; onClose: () => void; onShelf: () => void; onDrawer: () => void }) {
