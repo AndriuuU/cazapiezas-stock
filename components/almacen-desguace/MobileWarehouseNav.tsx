@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Archive, ChevronLeft, History, MapPinned, MoreHorizontal, PackageX, Plus, ShoppingBag, Warehouse, X } from "lucide-react";
-import { APP_VERSION } from "@/lib/app-version";
+import VersionBadge from "@/components/almacen-desguace/VersionBadge";
 
 export default function MobileWarehouseNav() {
   const pathname = usePathname();
@@ -18,7 +18,7 @@ export default function MobileWarehouseNav() {
       <button type="button" aria-label="Cerrar menú" onClick={() => setOpen(false)} className="warehouse-mobile-nav-root fixed inset-0 bg-black/85" style={{ zIndex: 40 }} />
       <section aria-label="Más opciones del almacén" className="warehouse-mobile-nav-root warehouse-mobile-menu fixed rounded-3xl border border-zinc-700 p-3 shadow-2xl shadow-black" style={{ left: "0.75rem", right: "0.75rem", bottom: "calc(5.25rem + env(safe-area-inset-bottom))", zIndex: 60, backgroundColor: "#09090b" }}>
         <div className="mb-2 flex items-center justify-between px-2 py-1">
-          <div><div className="flex items-center gap-2"><p className="font-black text-white">Más opciones</p><span className="rounded-md border border-zinc-700 bg-black px-1.5 py-0.5 font-mono text-[10px] font-bold text-zinc-500">v{APP_VERSION}</span></div><p className="text-xs text-zinc-500">Consulta y organiza el almacén</p></div>
+          <div><div className="flex items-center gap-2"><p className="font-black text-white">Más opciones</p><VersionBadge className="bg-black" /></div><p className="text-xs text-zinc-500">Consulta y organiza el almacén</p></div>
           <button type="button" onClick={() => setOpen(false)} className="rounded-full border border-zinc-700 bg-black p-2 text-zinc-300 active:scale-90" aria-label="Cerrar menú"><X size={20} /></button>
         </div>
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>

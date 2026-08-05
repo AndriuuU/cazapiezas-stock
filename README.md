@@ -161,6 +161,18 @@ Servidor local:
 http://localhost:3000
 ```
 
+### Imprimir etiquetas desde un móvil Android
+
+La Brother QL-570 conectada por USB puede recibir etiquetas desde un móvil de la misma red mediante el puente local incluido. En el PC conectado a la impresora, ejecuta:
+
+```bash
+npm run print:bridge
+```
+
+Deja esa ventana abierta. En el móvil, abre una pieza, pulsa **Imprimir etiqueta** y después **Brother por Wi-Fi**. El móvil mostrará una vista previa alojada en el PC y pedirá confirmación antes de imprimir.
+
+El puente escucha únicamente en la red local, en `http://192.168.1.36:8765`, y utiliza Microsoft Edge con la impresora predeterminada de Windows. La Brother QL-570 debe estar configurada como predeterminada con papel de 62 × 32 mm para la etiqueta compacta.
+
 ---
 
 ## 📜 Scripts Útiles

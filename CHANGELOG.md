@@ -1,6 +1,24 @@
 # Historial de versiones
 
-## 1.0.0 · 5 de agosto de 2026
+## Versión 1.1.1 · 5 de agosto de 2026
+
+- Cada estantería dispone de una ficha dinámica y una etiqueta QR imprimible.
+- La ficha muestra ocupación, disponibilidad, configuración y contenido de cada nivel y hueco.
+- El aviso de código leído al escanear desaparece automáticamente para no tapar otras acciones.
+- Las piezas de un cajón se pueden marcar como vendidas desde el propio cajón, liberando su espacio.
+
+- Las opciones de impresión muestran una vista previa fiel con los datos reales de la pieza.
+- La vista previa permite comprobar qué información incluye cada formato antes de imprimir.
+- La vista previa reutiliza el diseño real de impresión y el código de barras definitivo.
+- Corregidos los textos recortados y solapados del selector de etiquetas.
+- Reorganizadas las acciones individuales de las piezas con un orden único y más directo.
+- Añadida la impresión de etiquetas desde la propia lista de piezas.
+- El historial de novedades se puede consultar pulsando el número de versión.
+
+- Selector visual al imprimir etiquetas de piezas.
+- Formato normal de `62 × 42 mm`.
+- Formato compacto de `62 × 30 mm` para piezas pequeñas.
+- La aplicación recuerda el último formato utilizado.
 
 - Primera versión estable identificada de Almacén Desguace.
 - Gestión de piezas, estanterías, niveles, huecos y cajones.
