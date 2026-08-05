@@ -9,6 +9,8 @@ import { ESTADOS_PIEZA, ESTADOS_PROCESO, type PiezaDesguace, type PiezaDesguaceI
 import ConfirmDialog from "@/components/almacen-desguace/ConfirmDialog";
 import LocationField from "@/components/almacen-desguace/LocationField";
 import { RECAMBIO_FACIL_REFERENCE_MIN_LENGTH, validateRecambioFacilRequiredFields } from "@/lib/recambio-facil-rules";
+import { PHOTO_SOURCE_MAX_BYTES } from "@/lib/photo-upload";
+import { optimizePhoto, uploadPiecePhoto } from "@/lib/photo-upload-client";
 
 type PublicationResponse = {
   published?: Array<{ id: number }>;
@@ -27,7 +29,7 @@ type ImportResponse = {
 };
 
 const fields = [
-  ["nombre_pieza", "Nombre de la pieza"], ["descripcion", "Observaciones / descripción adicional"], ["categoria", "Categoría"],
+  ["nombre_pieza", "Nombre de la pieza"], ["descripcion", "Notas / descripción adicional"], ["categoria", "Categoría"],
   ["marca_pieza", "Marca de la pieza"], ["referencia_principal", "Referencia principal"],
   ["referencia_oem", "Referencia OEM"], ["referencias_equivalentes", "Referencias equivalentes"],
   ["marca_vehiculo", "Marca del vehículo"], ["modelo_vehiculo", "Modelo del vehículo"], ["matricula_vehiculo", "Matrícula del vehículo"],
@@ -60,13 +62,15 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
 
   async function uploadPhotos(pieceId: number) {
     if (!pendingPhotos.length) return;
-    setSavingStep(`Subiendo ${pendingPhotos.length} fotografía${pendingPhotos.length === 1 ? "" : "s"}...`);
-    const photosForm = new FormData();
-    pendingPhotos.forEach((file) => photosForm.append("fotos", file));
-    const response = await fetch(`/api/almacen-desguace/${pieceId}/fotos`, { method: "POST", body: photosForm });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "No se pudieron subir las fotografías.");
-    setPendingPhotos([]);
+    const photos = [...pendingPhotos];
+    for (let index = 0; index < photos.length; index++) {
+      const original = photos[index];
+      setSavingStep(`Preparando fotografía ${index + 1} de ${photos.length}...`);
+      const file = await optimizePhoto(original);
+      setSavingStep(`Subiendo fotografía ${index + 1} de ${photos.length}...`);
+      await uploadPiecePhoto(pieceId, file);
+      setPendingPhotos((current) => current.filter((candidate) => candidate !== original));
+    }
   }
 
   async function attachImportedPhotos(pieceId: number) {
@@ -218,7 +222,7 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
             const requiredForRf = name === "nombre_pieza" || name === "referencia_principal" || name === "marca_vehiculo" || name === "modelo_vehiculo";
             return <label key={name} className={name === "descripcion" ? "md:col-span-2" : ""}>
               {requiredForRf ? <RequiredLabel>{label}</RequiredLabel> : <span className="mb-1.5 block text-sm font-medium text-zinc-400">{label}</span>}
-              {name === "descripcion" ? <textarea name={name} defaultValue={String(value(name))} rows={3} placeholder="Detalles, estado, defectos u observaciones opcionales" className={inputClass} /> : name === "referencia_principal" ? <><input name={name} value={principalReference} onChange={(event) => setPrincipalReference(event.target.value)} aria-invalid={referenceInvalid} aria-describedby="rf-reference-help" placeholder="Mínimo 4 caracteres" className={`${inputClass} ${referenceInvalid ? "border-red-500 focus:border-red-400" : ""}`} /><p id="rf-reference-help" className={`mt-1.5 text-xs ${referenceInvalid ? "font-bold text-red-300" : referenceLength >= RECAMBIO_FACIL_REFERENCE_MIN_LENGTH ? "text-emerald-300" : "text-zinc-500"}`}>{referenceLength} / {RECAMBIO_FACIL_REFERENCE_MIN_LENGTH} caracteres mínimos{referenceInvalid ? " · faltan caracteres" : referenceLength >= RECAMBIO_FACIL_REFERENCE_MIN_LENGTH ? " · correcta" : ""}</p></> : <input name={name} defaultValue={String(value(name))} className={inputClass} />}
+              {name === "descripcion" ? <><textarea name={name} defaultValue={String(value(name))} rows={3} placeholder="Detalles, estado, defectos u observaciones opcionales" className={inputClass} /><p className="mt-1.5 text-xs text-violet-300">Este contenido se enviará a Recambio Fácil como notas (campo Observaciones).</p></> : name === "referencia_principal" ? <><input name={name} value={principalReference} onChange={(event) => setPrincipalReference(event.target.value)} aria-invalid={referenceInvalid} aria-describedby="rf-reference-help" placeholder="Mínimo 4 caracteres" className={`${inputClass} ${referenceInvalid ? "border-red-500 focus:border-red-400" : ""}`} /><p id="rf-reference-help" className={`mt-1.5 text-xs ${referenceInvalid ? "font-bold text-red-300" : referenceLength >= RECAMBIO_FACIL_REFERENCE_MIN_LENGTH ? "text-emerald-300" : "text-zinc-500"}`}>{referenceLength} / {RECAMBIO_FACIL_REFERENCE_MIN_LENGTH} caracteres mínimos{referenceInvalid ? " · faltan caracteres" : referenceLength >= RECAMBIO_FACIL_REFERENCE_MIN_LENGTH ? " · correcta" : ""}</p></> : <input name={name} defaultValue={String(value(name))} className={inputClass} />}
             </label>;
           })}
         </div>
@@ -241,7 +245,7 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
         <p className="mt-4 text-xs text-zinc-500">Puedes guardar campos incompletos y dejar la ubicación vacía. Los requisitos de Recambio Fácil únicamente se comprueban cuando utilizas su botón de publicación.</p>
       </section>
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-bold text-white"><Camera className="text-cyan-400" size={20} /> Fotografías</h2><p className="text-sm text-zinc-500">Puedes seleccionarlas ahora, incluso antes de crear la pieza.</p></div><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-cyan-400"><ImagePlus size={18} /> Añadir fotos<input type="file" accept="image/*" multiple className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files || []); const valid = files.filter((file) => file.type.startsWith("image/") && file.size <= 10 * 1024 * 1024); if (valid.length !== files.length) setError("Solo se permiten imágenes de hasta 10 MB."); setPendingPhotos((current) => [...current, ...valid]); event.currentTarget.value = ""; }} /></label></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-2 text-lg font-bold text-white"><Camera className="text-cyan-400" size={20} /> Fotografías</h2><p className="text-sm text-zinc-500">Puedes seleccionarlas ahora. La aplicación reduce automáticamente su peso para que sean compatibles con R/F.</p></div><label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-cyan-400"><ImagePlus size={18} /> Añadir fotos<input type="file" accept="image/*" multiple className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files || []); const valid = files.filter((file) => file.type.startsWith("image/") && file.size <= PHOTO_SOURCE_MAX_BYTES); if (valid.length !== files.length) setError("Solo se permiten imágenes originales de hasta 30 MB."); setPendingPhotos((current) => [...current, ...valid]); event.currentTarget.value = ""; }} /></label></div>
         {pieza?.fotos?.length ? <p className="mt-3 text-sm text-emerald-300">Esta pieza ya tiene {pieza.fotos.length} fotografía{pieza.fotos.length === 1 ? "" : "s"} guardada{pieza.fotos.length === 1 ? "" : "s"}.</p> : null}
         {importedPhotoUrls.length ? <div className="mt-4"><p className="mb-2 text-xs font-bold uppercase tracking-wide text-violet-300">Fotografías encontradas en R/F</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">{importedPhotoUrls.map((url) => <div key={url} className="relative overflow-hidden rounded-xl border border-violet-500/30 bg-zinc-950"><img src={url} alt="Fotografía importada de Recambio Fácil" className="aspect-square w-full object-cover" /><button type="button" onClick={() => setImportedPhotoUrls((current) => current.filter((item) => item !== url))} title="No importar esta fotografía" className="absolute right-1.5 top-1.5 rounded-full bg-black/75 p-1.5 text-white hover:bg-red-500"><X size={15} /></button><p className="truncate px-2 py-1.5 text-[10px] text-violet-300">Recambio Fácil</p></div>)}</div></div> : null}
         {pendingPhotos.length ? <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">{pendingPhotos.map((file, index) => <PendingPhoto key={`${file.name}-${file.lastModified}-${index}`} file={file} onRemove={() => setPendingPhotos((current) => current.filter((_, photoIndex) => photoIndex !== index))} />)}</div> : <div className="mt-4 rounded-xl border border-dashed border-zinc-700 py-8 text-center text-sm text-zinc-500">No has añadido fotografías nuevas.</div>}
