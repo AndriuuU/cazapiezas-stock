@@ -36,6 +36,16 @@ export type CatBatchItemResponse = {
 
 export type CatRemotePiece = Partial<CatPayload> & Record<string, unknown>;
 
+export type IamRemotePiece = {
+  Codigo?: number; Referencia?: string; Referencia2?: string; Referencia3?: string;
+  Idcliente?: number; Marca?: string; IdMarca?: number; Descripcion?: string;
+  Cantidad?: number; Precio?: number; Familia?: string; ImporteCasco?: number;
+  Fechabase?: string; Preciopm?: number; Fechaultimaentrada?: string;
+  Fechaultimasalida?: string; Fechaultimomovimiento?: string;
+  Ubicacionestanteria?: string; Preciopvp?: number; Preciopue?: number;
+  Almacen?: string; Peso?: number; Largo?: number; Ancho?: number; Alto?: number;
+} & Record<string, unknown>;
+
 export class RecambioFacilRequestError extends Error {
   status: number;
   responseBody: unknown;
@@ -216,6 +226,24 @@ export async function getCatPieceByCode(externalCode: string, config: RecambioFa
   const remotePiece = findRemotePiece(body);
   if (!remotePiece) throw new Error("Recambio Fácil confirmó la consulta, pero no devolvió los datos de la pieza.");
   return { externalCode: normalizedCode, piece: remotePiece, responseBody: body };
+}
+
+export async function getIamPieceByCode(code: number, config: RecambioFacilConfig) {
+  if (!Number.isInteger(code) || code <= 0) throw new Error("Indica un código IAM válido.");
+  const endpoint = new URL(`${config.baseUrl}/IAM/${encodeURIComponent(String(code))}`);
+  endpoint.searchParams.set("idcliente", String(config.idcliente));
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers: requestHeaders(config),
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await readResponse(response);
+  if (response.status === 404) return { code, piece: null, responseBody: body };
+  if (response.status !== 200) throw new RecambioFacilRequestError("consultar el recambio IAM", response.status, body);
+  const piece = findRemotePiece(body) as IamRemotePiece | null;
+  if (!piece) throw new Error("Recambio Fácil confirmó la consulta IAM, pero no devolvió los datos de la pieza.");
+  return { code, piece, responseBody: body };
 }
 
 export async function getCatPiece(piece: PiezaDesguace, config: RecambioFacilConfig) {

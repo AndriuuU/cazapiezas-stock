@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudUpload, Edit3, Eye, FilterX,
   History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
-  RotateCcw, SlidersHorizontal, Sparkles, Warehouse, X,
+  RotateCcw, SlidersHorizontal, Sparkles, Upload, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import PlacementModal from "@/components/almacen-desguace/PlacementModal";
@@ -28,6 +28,7 @@ type Filters = {
   estado_proceso: string;
   publicado_online: string;
   ubicacion: string;
+  tipo_pieza: string;
 };
 type ListResponse = {
   items: PiezaDesguace[];
@@ -49,14 +50,14 @@ type PublicationResponse = {
 
 const EMPTY_FILTERS: Filters = {
   q: "", categoria: "", estado_pieza: "", estado_proceso: "",
-  publicado_online: "", ubicacion: "",
+  publicado_online: "", ubicacion: "", tipo_pieza: "",
 };
 
-export default function WarehouseList({ initialView = "almacen" }: { initialView?: ListView }) {
+export default function WarehouseList({ initialView = "almacen", initialType = "" }: { initialView?: ListView; initialType?: "CAT" | "IAM" | "" }) {
   const [pieces, setPieces] = useState<PiezaDesguace[]>([]);
   const [view, setView] = useState<ListView>(initialView);
   const [categories, setCategories] = useState<string[]>([]);
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>({ ...EMPTY_FILTERS, tipo_pieza: initialType });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [total, setTotal] = useState(0);
@@ -461,6 +462,9 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
             <Link href="/almacen-desguace/nueva" className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-amber-400">
               <Plus size={18} /> Nueva pieza
             </Link>
+            <Link href="/almacen-desguace/importar-iam" className="inline-flex items-center gap-2 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-2.5 font-bold text-violet-200 hover:bg-violet-500/20">
+              <Upload size={18} /> Importar IAM
+            </Link>
           </div>
         </div>
 
@@ -487,6 +491,7 @@ export default function WarehouseList({ initialView = "almacen" }: { initialView
             <button onClick={() => setShowMobileFilters((current) => !current)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 md:hidden"><SlidersHorizontal size={17} /> {showMobileFilters ? "Ocultar filtros" : "Más filtros"}</button>
             <div className={showMobileFilters ? "contents" : "hidden md:contents"}>
               <FilterSelect value={filters.categoria} onChange={(value) => updateFilter("categoria", value)}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
+              <FilterSelect value={filters.tipo_pieza} onChange={(value) => updateFilter("tipo_pieza", value)}><option value="">CAT e IAM</option><option value="CAT">Solo CAT</option><option value="IAM">Solo IAM</option></FilterSelect>
               <FilterSelect value={filters.estado_pieza} onChange={(value) => updateFilter("estado_pieza", value)}><option value="">Cualquier estado</option>{ESTADOS_PIEZA.map((value) => <option key={value}>{value}</option>)}</FilterSelect>
               {view === "almacen" ? <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.filter((value) => value !== "Retirada" && value !== "Vendida").map((value) => <option key={value}>{value}</option>)}</FilterSelect> : view === "vendidas" ? <div className="flex items-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-sm font-bold text-emerald-300">Proceso: Vendida</div> : <div className="flex items-center rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold text-red-300">Proceso: Retirada</div>}
               <FilterSelect value={filters.publicado_online} onChange={(value) => updateFilter("publicado_online", value)}><option value="">Online y no online</option><option value="true">Publicadas online</option><option value="false">No publicadas</option></FilterSelect>
@@ -595,13 +600,13 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
     <tr className={`hover:bg-zinc-800/40 ${selected ? "bg-amber-500/5" : ""}`}>
       <td className="px-3 py-1.5"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></td>
       <td className="px-2 py-1.5"><button onClick={onPhotos} title="Ver fotografías" className="group relative block">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" className="h-9 w-9 rounded-md object-cover ring-1 ring-zinc-700 group-hover:ring-cyan-400" /> : <span className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-800 text-zinc-600"><Camera size={16} /></span>}<Images className="absolute -bottom-1 -right-1 rounded bg-cyan-500 p-0.5 text-zinc-950" size={14} /></button></td>
-      <td className="max-w-52 px-2 py-1.5"><Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block truncate font-mono text-sm font-bold text-amber-300 underline decoration-amber-500/30 underline-offset-2 transition hover:text-amber-200 hover:decoration-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link><p className="truncate text-[11px] text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p></td>
+      <td className="max-w-52 px-2 py-1.5"><div className="flex items-center gap-1.5"><TypeBadge type={piece.tipo_pieza} /><Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block truncate font-mono text-sm font-bold text-amber-300 underline decoration-amber-500/30 underline-offset-2 transition hover:text-amber-200 hover:decoration-amber-300">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link></div><p className="truncate text-[11px] text-zinc-500">{piece.nombre_pieza || piece.codigo_interno}</p></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Ver coche" /></td>
       <td className="px-2 py-1.5 text-sm font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</td>
       <td className="px-2 py-1.5 text-zinc-400">{formatDate(piece.fecha_entrada)}</td>
       <td className="px-2 py-1.5">{piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button>}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
-      <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></td>
+      <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} />{piece.tipo_pieza !== "IAM" && <RecambioFacilLink piece={piece} compact />}</div></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
     </tr>
     {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
@@ -615,12 +620,12 @@ function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onD
       <div className="pt-2"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></div>
       <button onClick={onPhotos} className="relative block shrink-0 overflow-hidden rounded-xl bg-zinc-800 ring-1 ring-zinc-700" style={{ width: 64, minWidth: 64, maxWidth: 64, height: 64, minHeight: 64, maxHeight: 64 }} title="Ver fotografías">{photo?.url_visualizacion ? <img src={photo.url_visualizacion} alt="" width={64} height={64} className="block object-cover" style={{ width: 64, minWidth: 64, maxWidth: 64, height: 64, minHeight: 64, maxHeight: 64, objectFit: "cover" }} /> : <span className="flex h-full w-full items-center justify-center text-zinc-600"><Camera size={22} /></span>}<span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-zinc-950"><Images size={13} /></span></button>
       <div className="min-w-0 flex-1">
-        <Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block truncate font-mono text-lg font-black text-amber-300 underline decoration-amber-500/30 underline-offset-4 hover:text-amber-200">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link>
+        <div className="flex items-center gap-2"><TypeBadge type={piece.tipo_pieza} /><Link href={`/almacen-desguace/${piece.id}`} title="Abrir ficha de la pieza" className="block min-w-0 truncate font-mono text-lg font-black text-amber-300 underline decoration-amber-500/30 underline-offset-4 hover:text-amber-200">{piece.referencia_principal || piece.referencia_oem || "Sin referencia"}</Link></div>
         <p className="mt-0.5 line-clamp-2 text-sm font-semibold leading-5 text-zinc-300">{piece.nombre_pieza || piece.codigo_interno}</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm"><span className="font-black text-emerald-300">{piece.precio_venta == null ? "Sin precio" : `${Number(piece.precio_venta).toFixed(2)} €`}</span><span className="flex items-center gap-1.5 text-zinc-400"><CalendarDays size={15} />{formatDate(piece.fecha_entrada)}</span></div>
       </div>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large /><RecambioFacilLink piece={piece} /></div>
+    <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large />{piece.tipo_pieza !== "IAM" && <RecambioFacilLink piece={piece} />}</div>
     <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3">
       <p className="mb-2 text-sm font-black text-cyan-300">Ubicación en el almacén</p>
       {piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button>}
@@ -633,6 +638,11 @@ function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onD
 
 function CompactToggle({ active, onClick, icon, label, wide = false }: { active: boolean; onClick: () => void; icon: ReactNode; label: string; wide?: boolean }) {
   return <button onClick={onClick} className={`inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold ${wide ? "min-h-11 flex-1 px-4 py-2.5 text-sm" : "min-h-8 px-2.5 py-1.5 text-xs"} ${active ? "border-amber-500/50 bg-amber-500/10 text-amber-300" : "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>{icon}{label}<ChevronDown size={wide ? 15 : 13} className={active ? "rotate-180" : ""} /></button>;
+}
+
+function TypeBadge({ type }: { type: PiezaDesguace["tipo_pieza"] | undefined }) {
+  const iam = type === "IAM";
+  return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${iam ? "bg-violet-500/20 text-violet-300" : "bg-cyan-500/15 text-cyan-300"}`}>{iam ? "IAM" : "CAT"}</span>;
 }
 
 function VehicleDetails({ piece }: { piece: PiezaDesguace }) {

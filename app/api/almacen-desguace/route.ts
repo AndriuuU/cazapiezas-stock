@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       "precio.asc": "precio_venta.asc.nullslast",
     };
     const params = new URLSearchParams({
-      select: allIds ? "id" : "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
+      select: allIds ? "id" : "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion),iam:almacen_desguace_piezas_iam(*)",
       order: sortOptions[query.get("sort") || "created_at.desc"] || sortOptions["created_at.desc"],
       limit: String(pageSize),
       offset: String(offset),
@@ -76,6 +76,8 @@ export async function GET(request: Request) {
     }
     const published = query.get("publicado_online");
     if (published === "true" || published === "false") params.set("publicado_online", `eq.${published}`);
+    const tipoPieza = query.get("tipo_pieza");
+    if (tipoPieza === "CAT" || tipoPieza === "IAM") params.set("tipo_pieza", `eq.${tipoPieza}`);
 
     const { url, key } = getSupabaseApiConfig();
     let response = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${params}`, {

@@ -4,7 +4,7 @@ import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/
 export async function getPieza(id: string | number) {
   const { url, key } = getSupabaseApiConfig();
   const params = new URLSearchParams({
-    select: "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion)",
+    select: "*,fotos:almacen_desguace_fotos(*),cajon:almacen_desguace_cajones(id,codigo,nombre,ubicacion),iam:almacen_desguace_piezas_iam(*)",
     id: `eq.${id}`,
     limit: "1",
   });
