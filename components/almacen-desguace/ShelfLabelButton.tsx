@@ -32,7 +32,7 @@ export default function ShelfLabelButton({ shelf, compact = false }: { shelf: Sh
   }
 
   const buttonClass = compact ? "inline-flex items-center gap-1 rounded-lg border border-cyan-500/30 px-3 py-2 text-sm font-bold text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50" : "inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10 disabled:opacity-50";
-  return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void print("browser")} disabled={busy} className={buttonClass}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Etiqueta QR</button><button type="button" onClick={() => void print("brother")} disabled={busy} className={buttonClass}><Printer size={16} /> Brother Wi-Fi</button></div>;
+  return <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void print("brother")} disabled={busy} className={buttonClass}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Etiqueta QR · 62 × 100</button><button type="button" onClick={() => void print("browser")} disabled={busy} className={buttonClass}><Printer size={16} /> PDF / otra impresora</button></div>;
 }
 
 function safe(value: unknown) {

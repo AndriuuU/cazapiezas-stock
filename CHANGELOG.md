@@ -1,5 +1,14 @@
 # Historial de versiones
 
+## Versión 1.2.1 · 7 de agosto de 2026
+
+- Las piezas IAM se almacenan junto a las CAT, identificadas por su tipo.
+- Nueva importación IAM desde Recambio Fácil mediante su API específica y desde CSV con vista previa.
+- Las reimportaciones IAM actualizan los registros existentes sin duplicarlos.
+- El listado permite filtrar CAT e IAM y la ficha muestra referencias, precios, fechas, origen y medidas IAM.
+- Las piezas IAM quedan protegidas frente a publicaciones accidentales mediante el endpoint CAT.
+- La opción para importar piezas IAM se muestra en ordenador y se oculta en el menú móvil.
+
 ## Versión 1.1.1 · 5 de agosto de 2026
 
 - Cada estantería dispone de una ficha dinámica y una etiqueta QR imprimible.

@@ -24,6 +24,41 @@ export const ESTADOS_PROCESO = [
 
 export type EstadoPieza = (typeof ESTADOS_PIEZA)[number];
 export type EstadoProceso = (typeof ESTADOS_PROCESO)[number];
+export type TipoPiezaDesguace = "CAT" | "IAM";
+
+export interface DetallePiezaIam {
+  pieza_id: number;
+  codigo_iam: number | null;
+  idcliente: number | null;
+  referencia_2: string | null;
+  referencia_3: string | null;
+  marca_rf: string | null;
+  id_marca: number | null;
+  familia: string | null;
+  precio_base: number | null;
+  precio_ecotasa: number | null;
+  precio_publicado: number | null;
+  importe_casco: number | null;
+  precio_pvp: number | null;
+  precio_pue: number | null;
+  precio_pm: number | null;
+  fecha_base: string | null;
+  fecha_insercion: string | null;
+  fecha_ultima_entrada: string | null;
+  fecha_ultima_salida: string | null;
+  fecha_ultimo_movimiento: string | null;
+  forma_publicacion: string | null;
+  almacen_origen: string | null;
+  ubicacion_estanteria_origen: string | null;
+  peso: number | null;
+  largo: number | null;
+  ancho: number | null;
+  alto: number | null;
+  clave_importacion: string | null;
+  datos_origen: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface FotoDesguace {
   id: number;
@@ -128,6 +163,7 @@ export interface SugerenciaUbicacion {
 export interface PiezaDesguace {
   id: number;
   codigo_interno: string;
+  tipo_pieza: TipoPiezaDesguace;
   nombre_pieza: string | null;
   descripcion: string | null;
   categoria: string | null;
@@ -157,11 +193,12 @@ export interface PiezaDesguace {
   created_at: string;
   updated_at: string;
   fotos?: FotoDesguace[];
+  iam?: DetallePiezaIam | null;
 }
 
 export type PiezaDesguaceInput = Partial<Omit<
   PiezaDesguace,
-  "id" | "codigo_interno" | "created_at" | "updated_at" | "fotos" | "cajon"
+  "id" | "codigo_interno" | "created_at" | "updated_at" | "fotos" | "cajon" | "iam"
 >>;
 
 export type TipoMovimientoCajon = "creacion" | "entrada" | "salida" | "traslado" | "estado";

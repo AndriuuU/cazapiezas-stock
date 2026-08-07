@@ -39,6 +39,7 @@ export function normalizePiezaInput(value: unknown): PiezaDesguaceInput {
   if ("estado_pieza" in source) result.estado_pieza = source.estado_pieza || null;
   if ("estado_proceso" in source) result.estado_proceso = source.estado_proceso;
   if ("publicado_online" in source) result.publicado_online = Boolean(source.publicado_online);
+  if ("tipo_pieza" in source) result.tipo_pieza = source.tipo_pieza === "IAM" ? "IAM" : "CAT";
 
   return result as PiezaDesguaceInput;
 }

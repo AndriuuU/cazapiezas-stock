@@ -83,6 +83,10 @@ export async function POST(request: Request) {
     const ready: PiezaDesguace[] = [];
 
     for (const piece of pieces) {
+      if (piece.tipo_pieza === "IAM") {
+        failed.push({ id: piece.id, codigo: piece.codigo_interno, error: "Es una pieza IAM y no se puede publicar mediante la API CAT." });
+        continue;
+      }
       if (piece.publicado_online) {
         skipped.push({ id: piece.id, codigo: piece.codigo_interno, reason: "Ya estaba online." });
         continue;
