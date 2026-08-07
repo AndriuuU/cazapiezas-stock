@@ -8,6 +8,7 @@
 - El listado permite filtrar CAT e IAM y la ficha muestra referencias, precios, fechas, origen y medidas IAM.
 - Las piezas IAM quedan protegidas frente a publicaciones accidentales mediante el endpoint CAT.
 - La opción para importar piezas IAM se muestra en ordenador y se oculta en el menú móvil.
+- Las piezas IAM publicadas incluyen un acceso directo a su referencia en el buscador de Recambio Fácil.
 
 ## Versión 1.1.1 · 5 de agosto de 2026
 
