@@ -606,7 +606,7 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
       <td className="px-2 py-1.5 text-zinc-400">{formatDate(piece.fecha_entrada)}</td>
       <td className="px-2 py-1.5">{piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button>}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
-      <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} />{piece.tipo_pieza !== "IAM" && <RecambioFacilLink piece={piece} compact />}</div></td>
+      <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
     </tr>
     {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
@@ -625,7 +625,7 @@ function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onD
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm"><span className="font-black text-emerald-300">{piece.precio_venta == null ? "Sin precio" : `${Number(piece.precio_venta).toFixed(2)} €`}</span><span className="flex items-center gap-1.5 text-zinc-400"><CalendarDays size={15} />{formatDate(piece.fecha_entrada)}</span></div>
       </div>
     </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large />{piece.tipo_pieza !== "IAM" && <RecambioFacilLink piece={piece} />}</div>
+    <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large /><RecambioFacilLink piece={piece} /></div>
     <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3">
       <p className="mb-2 text-sm font-black text-cyan-300">Ubicación en el almacén</p>
       {piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button>}
