@@ -55,6 +55,7 @@ export async function POST(request: Request, context: Context) {
     const body = await request.json() as Record<string, unknown>;
     const employee = String(body.empleado || "").trim();
     const notes = String(body.observaciones || "").trim();
+    const paymentMethod = String(body.forma_pago || "No indicada").trim();
     const price = Number(body.precio_final);
     const saleDate = new Date(String(body.fecha_venta || ""));
 
@@ -63,6 +64,7 @@ export async function POST(request: Request, context: Context) {
     if (Number.isNaN(saleDate.getTime())) return NextResponse.json({ error: "La fecha de venta no es válida." }, { status: 400 });
     if (saleDate.getTime() > Date.now() + 5 * 60_000) return NextResponse.json({ error: "La fecha de venta no puede estar en el futuro." }, { status: 400 });
     if (notes.length > 2000) return NextResponse.json({ error: "Las observaciones no pueden superar los 2.000 caracteres." }, { status: 400 });
+    if (paymentMethod.length < 2 || paymentMethod.length > 50) return NextResponse.json({ error: "La forma de pago no es válida." }, { status: 400 });
 
     const before = previousState(piece);
     const patch = {
@@ -88,12 +90,13 @@ export async function POST(request: Request, context: Context) {
         cajon_id: before.cajon_id,
         tipo_evento: "edicion_pieza",
         accion: "Venta registrada",
-        campos_cambiados: ["fecha_venta", "empleado", "precio_final", "observaciones"],
+        campos_cambiados: ["fecha_venta", "empleado", "precio_final", "forma_pago", "observaciones"],
         valor_anterior: before,
         valor_nuevo: {
           fecha_venta: saleDate.toISOString(),
           empleado: employee,
           precio_final: patch.precio_venta,
+          forma_pago: paymentMethod,
           observaciones: notes || null,
         },
         detalle: `Venta registrada por ${employee}. La ubicación${before.cajon_id ? " y el espacio del cajón" : ""} quedó libre.`,

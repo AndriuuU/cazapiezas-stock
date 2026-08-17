@@ -32,6 +32,8 @@ type Filters = {
   tipo_pieza: string;
   venta_desde: string;
   venta_hasta: string;
+  empleado_venta: string;
+  forma_pago: string;
 };
 type SalesSummary = { count: number; gross: number; net: number; vat: number; vatRate: number; costs: number; margin: number; average: number; withoutDate: number };
 type ListResponse = {
@@ -42,6 +44,8 @@ type ListResponse = {
   totalPages: number;
   categories: string[];
   salesSummary: SalesSummary | null;
+  salesEmployees: string[];
+  salesPaymentMethods: string[];
 };
 type ConfirmRequest = { title: string; description: string; confirmLabel: string; tone?: "amber" | "red"; onConfirm: () => void | Promise<void> };
 type ExpandedPanel = { pieceId: number; type: "vehicle" | "actions" } | null;
@@ -55,7 +59,7 @@ type PublicationResponse = {
 
 const EMPTY_FILTERS: Filters = {
   q: "", categoria: "", estado_pieza: "", estado_proceso: "",
-  publicado_online: "", ubicacion: "", tipo_pieza: "", venta_desde: "", venta_hasta: "",
+  publicado_online: "", ubicacion: "", tipo_pieza: "", venta_desde: "", venta_hasta: "", empleado_venta: "", forma_pago: "",
 };
 
 export default function WarehouseList({ initialView = "almacen", initialType = "" }: { initialView?: ListView; initialType?: "CAT" | "IAM" | "" }) {
@@ -92,8 +96,9 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
   const [drawerSaving, setDrawerSaving] = useState<number | null>(null);
   const [drawerError, setDrawerError] = useState("");
   const [salePiece, setSalePiece] = useState<PiezaDesguace | null>(null);
-  const [vatRate, setVatRate] = useState(21);
   const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
+  const [salesEmployees, setSalesEmployees] = useState<string[]>([]);
+  const [salesPaymentMethods, setSalesPaymentMethods] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,7 +111,6 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
       params.set("page_size", String(pageSize));
       params.set("sort", sort);
       params.set("vista", view);
-      if (view === "vendidas") params.set("iva", String(vatRate));
       const response = await fetch(`/api/almacen-desguace?${params}`, { cache: "no-store" });
       const data = await response.json() as ListResponse & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo cargar el almacén.");
@@ -115,13 +119,15 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
       setTotalPages(data.totalPages);
       setCategories(data.categories || []);
       setSalesSummary(data.salesSummary || null);
+      setSalesEmployees(data.salesEmployees || []);
+      setSalesPaymentMethods(data.salesPaymentMethods || []);
       if (page > data.totalPages) setPage(data.totalPages);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo cargar el almacén.");
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize, sort, vatRate, view]);
+  }, [filters, page, pageSize, sort, view]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), filters.q ? 350 : 100);
@@ -150,6 +156,8 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
       ubicacion: "",
       venta_desde: nextView === "vendidas" ? current.venta_desde : "",
       venta_hasta: nextView === "vendidas" ? current.venta_hasta : "",
+      empleado_venta: nextView === "vendidas" ? current.empleado_venta : "",
+      forma_pago: nextView === "vendidas" ? current.forma_pago : "",
     }));
     setPage(1);
     setSelected(new Set());
@@ -484,6 +492,7 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
             </Link>
           </div>
           <div className="warehouse-desktop-actions flex-wrap gap-2">
+            <button onClick={() => changeView("retiradas")} className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-bold transition ${view === "retiradas" ? "border-red-500/50 bg-red-500/15 text-red-300" : "border-zinc-700 bg-zinc-900 text-zinc-500 hover:border-red-500/30 hover:text-red-300"}`}><PackageX size={17} /> Retiradas</button>
             <Link href="/almacen-desguace/nueva" className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-bold text-zinc-950 hover:bg-amber-400">
               <Plus size={18} /> Nueva pieza
             </Link>
@@ -496,19 +505,22 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
         <nav className="warehouse-desktop-tabs gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-2" aria-label="Listados de piezas">
           <button onClick={() => changeView("almacen")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "almacen" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><Warehouse size={18} /> Almacenadas</button>
           <button onClick={() => changeView("vendidas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "vendidas" ? "bg-emerald-500 text-zinc-950" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><ShoppingBag size={18} /> Vendidas</button>
-          <button onClick={() => changeView("retiradas")} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-black transition ${view === "retiradas" ? "bg-red-500 text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}><PackageX size={18} /> Retiradas</button>
         </nav>
 
         {view === "vendidas" && <SalesSummaryPanel
           summary={salesSummary}
           from={filters.venta_desde}
           to={filters.venta_hasta}
-          vatRate={vatRate}
+          employee={filters.empleado_venta}
+          employees={salesEmployees}
+          paymentMethod={filters.forma_pago}
+          paymentMethods={salesPaymentMethods}
           loading={loading}
           onFrom={(value) => updateFilter("venta_desde", value)}
           onTo={(value) => updateFilter("venta_hasta", value)}
-          onVatRate={(value) => { setVatRate(value); setPage(1); }}
-          onClearDates={() => { setFilters((current) => ({ ...current, venta_desde: "", venta_hasta: "" })); setPage(1); }}
+          onEmployee={(value) => updateFilter("empleado_venta", value)}
+          onPaymentMethod={(value) => updateFilter("forma_pago", value)}
+          onClearDates={() => { setFilters((current) => ({ ...current, venta_desde: "", venta_hasta: "", empleado_venta: "", forma_pago: "" })); setPage(1); }}
         />}
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
@@ -533,7 +545,7 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
               {view === "almacen" ? <FilterSelect value={filters.estado_proceso} onChange={(value) => updateFilter("estado_proceso", value)}><option value="">Cualquier proceso</option>{ESTADOS_PROCESO.filter((value) => value !== "Retirada" && value !== "Vendida").map((value) => <option key={value}>{value}</option>)}</FilterSelect> : view === "vendidas" ? <div className="flex items-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-sm font-bold text-emerald-300">Proceso: Vendida</div> : <div className="flex items-center rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-sm font-bold text-red-300">Proceso: Retirada</div>}
               <FilterSelect value={filters.publicado_online} onChange={(value) => updateFilter("publicado_online", value)}><option value="">Online y no online</option><option value="true">Publicadas online</option><option value="false">No publicadas</option></FilterSelect>
               <label className="relative md:col-span-2 xl:col-span-2"><MapPin className="absolute left-3 top-3 text-zinc-500" size={18} /><input value={filters.ubicacion} onChange={(event) => updateFilter("ubicacion", event.target.value.toUpperCase())} placeholder="Ubicación: E01, DESGUACE-E01..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 font-mono text-white focus:border-amber-500 focus:outline-none" /></label>
-              <FilterSelect value={sort} onChange={(value) => { setSort(value); setPage(1); }}><option value="created_at.desc">Más recientes primero</option><option value="created_at.asc">Más antiguas primero</option><option value="nombre.asc">Nombre A–Z</option><option value="referencia.asc">Referencia A–Z</option><option value="ubicacion.asc">Ubicación</option><option value="precio.desc">Mayor precio</option><option value="precio.asc">Menor precio</option></FilterSelect>
+              <FilterSelect value={sort} onChange={(value) => { setSort(value); setPage(1); }}>{view === "vendidas" && <><option value="sale_date.desc">Venta más reciente</option><option value="sale_date.asc">Venta más antigua</option></>}<option value="created_at.desc">Más recientes primero</option><option value="created_at.asc">Más antiguas primero</option><option value="nombre.asc">Nombre A–Z</option><option value="referencia.asc">Referencia A–Z</option><option value="ubicacion.asc">Ubicación</option><option value="precio.desc">Mayor precio</option><option value="precio.asc">Menor precio</option></FilterSelect>
             </div>
           </div>
           <p className="mt-3 text-xs text-zinc-500">Puedes escribir varias palabras: todas deberán aparecer en alguno de los campos buscables.</p>
@@ -623,7 +635,7 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
       <style jsx global>{`.warehouse-list-notice { bottom: calc(5.25rem + env(safe-area-inset-bottom) + .75rem); } @media (min-width: 640px) { .warehouse-list-notice { bottom: 1rem; } }`}</style>
       <style jsx global>{`@media (max-width: 639px) { .warehouse-list-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; } }`}</style>
       <style jsx global>{`.bulk-actions-grid { display: grid; gap: .5rem; } @media (min-width: 1280px) { .bulk-actions-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.45fr); } }`}</style>
-      <style jsx global>{`.warehouse-list-main { padding-bottom: 7rem; } .warehouse-desktop-only, .warehouse-desktop-actions, .warehouse-desktop-tabs { display: none; } .warehouse-mobile-only { display: block; } @media (min-width: 640px) { .warehouse-list-main { padding-bottom: 0; } .warehouse-desktop-only { display: block; } .warehouse-desktop-actions { display: flex; } .warehouse-desktop-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } .warehouse-mobile-only { display: none !important; } }`}</style>
+      <style jsx global>{`.warehouse-list-main { padding-bottom: 7rem; } .warehouse-desktop-only, .warehouse-desktop-actions, .warehouse-desktop-tabs { display: none; } .warehouse-mobile-only { display: block; } @media (min-width: 640px) { .warehouse-list-main { padding-bottom: 0; } .warehouse-desktop-only { display: block; } .warehouse-desktop-actions { display: flex; } .warehouse-desktop-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .warehouse-mobile-only { display: none !important; } }`}</style>
       <style jsx global>{`.bulk-input { min-height: 42px; width: 100%; border-radius: 0.75rem; border: 1px solid rgb(113 113 122); background: rgb(9 9 11); padding: 0.5rem 0.75rem; color: white; outline: none; } .bulk-input:focus { border-color: rgb(245 158 11); } [aria-label^="Asignar ubicación"] button.group { transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease; } [aria-label^="Asignar ubicación"] button.group > span:first-child { transition: transform 180ms ease; } [aria-label^="Asignar ubicación"] .grid > button.group:first-child:hover { transform: translateY(-2px); border-color: rgb(52 211 153); background: rgba(16, 185, 129, 0.16); box-shadow: 0 12px 28px rgba(6, 78, 59, 0.28); } [aria-label^="Asignar ubicación"] .grid > button.group:last-child:hover { transform: translateY(-2px); border-color: rgb(34 211 238); background: rgba(6, 182, 212, 0.16); box-shadow: 0 12px 28px rgba(8, 51, 68, 0.3); } [aria-label^="Asignar ubicación"] button.group:hover > span:first-child { transform: scale(1.1); } [aria-label^="Asignar ubicación"] button.group:focus-visible { outline: 2px solid rgb(251 191 36); outline-offset: 3px; } .mobile-nav-item { display: flex; min-height: 3.5rem; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; border-radius: 0.9rem; font-size: 0.68rem; font-weight: 800; transition: color 180ms ease, transform 180ms ease, background-color 180ms ease; } .mobile-nav-item:active { transform: scale(0.9); background: rgba(255,255,255,0.05); } .mobile-nav-item svg { transition: transform 220ms cubic-bezier(.2,.8,.2,1); } .mobile-nav-create { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; color: rgb(251 191 36); font-size: 0.68rem; font-weight: 900; } .mobile-nav-create > span { display: flex; width: 3.5rem; height: 3.5rem; margin-top: -1.6rem; align-items: center; justify-content: center; border-radius: 9999px; border: 4px solid rgb(24 24 27); background: rgb(245 158 11); color: rgb(9 9 11); box-shadow: 0 8px 24px rgba(245,158,11,.3); transition: transform 180ms ease, box-shadow 180ms ease; } .mobile-nav-create:active > span { transform: scale(.9) rotate(90deg); box-shadow: 0 4px 12px rgba(245,158,11,.2); } .mobile-more-option { display: flex; min-height: 4.25rem; align-items: center; gap: .75rem; border-width: 1px; border-radius: 1rem; padding: .8rem; font-size: .82rem; font-weight: 800; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease; } .mobile-more-option:active { transform: scale(.96); } .mobile-more-menu { animation: mobile-menu-enter 220ms cubic-bezier(.2,.8,.2,1); } @keyframes mobile-menu-enter { from { opacity: 0; transform: translateY(24px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } } @media (prefers-reduced-motion: reduce) { .mobile-more-menu { animation: none; } .mobile-nav-item, .mobile-nav-item svg, .mobile-nav-create > span, .mobile-more-option { transition: none; } }`}</style>
     </main>
   );
@@ -644,7 +656,7 @@ function PieceRow({ piece, selected, expanded, onToggle, onPanel, onLocate, onDr
       <td className="px-2 py-1.5">{piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button>}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
       <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} /><RecambioFacilLink piece={piece} compact /></div></td>
-      <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label="Acciones" /></td>
+      <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label={piece.estado_proceso === "Vendida" ? "Ver venta" : "Acciones"} /></td>
     </tr>
     {expanded && <tr className="bg-zinc-950/70"><td colSpan={10} className="px-4 py-3">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</td></tr>}
   </>;
@@ -668,7 +680,7 @@ function PieceCard({ piece, selected, expanded, onToggle, onPanel, onLocate, onD
       {piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button>}
     </div>
     <div className="mt-3 grid gap-3 rounded-xl bg-zinc-950/60 p-3 sm:grid-cols-2"><div><span className="block text-xs font-semibold text-zinc-500">Estado de la pieza</span><p className="mt-1 text-sm font-semibold leading-5 text-zinc-200">{piece.estado_pieza || "Sin estado"}</p></div><div><span className="block text-xs font-semibold text-zinc-500">Proceso</span><p className="mt-1 text-sm font-semibold leading-5 text-zinc-300">{piece.estado_proceso}</p></div></div>
-    <div className="mt-3 flex gap-2"><CompactToggle wide active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={17} />} label="Ver coche" /><CompactToggle wide active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={18} />} label="Acciones" /></div>
+    <div className="mt-3 flex gap-2"><CompactToggle wide active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={17} />} label="Ver coche" /><CompactToggle wide active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={18} />} label={piece.estado_proceso === "Vendida" ? "Ver venta" : "Acciones"} /></div>
     {expanded && <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-4">{expanded === "vehicle" ? <VehicleDetails piece={piece} /> : <ActionPanel piece={piece} onLocate={onLocate} onDrawer={onDrawer} onPhotos={onPhotos} onAction={onAction} />}</div>}
   </article>;
 }
@@ -736,21 +748,29 @@ function SalesSummaryPanel({
   summary,
   from,
   to,
-  vatRate,
+  employee,
+  employees,
+  paymentMethod,
+  paymentMethods,
   loading,
   onFrom,
   onTo,
-  onVatRate,
+  onEmployee,
+  onPaymentMethod,
   onClearDates,
 }: {
   summary: SalesSummary | null;
   from: string;
   to: string;
-  vatRate: number;
+  employee: string;
+  employees: string[];
+  paymentMethod: string;
+  paymentMethods: string[];
   loading: boolean;
   onFrom: (value: string) => void;
   onTo: (value: string) => void;
-  onVatRate: (value: number) => void;
+  onEmployee: (value: string) => void;
+  onPaymentMethod: (value: string) => void;
   onClearDates: () => void;
 }) {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" });
@@ -759,20 +779,21 @@ function SalesSummaryPanel({
     { label: "Ventas", value: String(summary?.count || 0), color: "text-white" },
     { label: "Facturación · IVA incluido", value: money(summary?.gross), color: "text-emerald-300" },
     { label: "Base sin IVA", value: money(summary?.net), color: "text-cyan-300" },
-    { label: `IVA incluido · ${vatRate} %`, value: money(summary?.vat), color: "text-amber-300" },
+    { label: "IVA incluido · 21 %", value: money(summary?.vat), color: "text-amber-300" },
     { label: "Coste registrado", value: money(summary?.costs), color: "text-zinc-300" },
     { label: "Margen bruto estimado", value: money(summary?.margin), color: "text-violet-300" },
     { label: "Venta media", value: money(summary?.average), color: "text-blue-300" },
   ];
 
   return <section className={`rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 transition-opacity sm:p-5 ${loading ? "opacity-60" : ""}`}>
-    <div className="flex flex-wrap items-start justify-between gap-4">
+    <div>
       <div><h2 className="flex items-center gap-2 text-lg font-black text-white"><BadgeEuro className="text-emerald-300" size={22} /> Resumen de ventas</h2><p className="mt-1 text-sm text-zinc-500">Importes calculados sobre el precio final, suponiendo que ya incluye IVA. El margen resta el IVA y el coste registrado.</p></div>
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="mt-4 grid grid-cols-2 items-end gap-2 md:flex md:flex-wrap md:justify-start [&>label]:min-w-0 md:[&>label]:w-44 [&_input]:!w-full [&_select]:!w-full md:[&>button]:w-40">
         <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Vendida desde</span><input aria-label="Vendida desde" type="date" value={from} max={to || today} onChange={(event) => onFrom(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500" /></label>
         <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Vendida hasta</span><input aria-label="Vendida hasta" type="date" value={to} min={from || undefined} max={today} onChange={(event) => onTo(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500" /></label>
-        <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Tipo de IVA</span><select aria-label="Tipo de IVA" value={vatRate} onChange={(event) => onVatRate(Number(event.target.value))} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-amber-500"><option value={21}>21 % general</option><option value={10}>10 %</option><option value={4}>4 %</option><option value={0}>0 % / exenta</option></select></label>
-        {(from || to) && <button type="button" onClick={onClearDates} className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300 hover:bg-zinc-800"><CalendarRange size={15} /> Todas las fechas</button>}
+        <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Empleado</span><select aria-label="Filtrar por empleado" value={employee} onChange={(event) => onEmployee(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500"><option value="">Todos</option>{employees.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Forma de pago</span><select aria-label="Filtrar por forma de pago" value={paymentMethod} onChange={(event) => onPaymentMethod(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500"><option value="">Todas</option>{paymentMethods.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <button type="button" disabled={!(from || to || employee || paymentMethod)} onClick={onClearDates} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300 hover:bg-zinc-800 disabled:pointer-events-none disabled:invisible"><CalendarRange size={15} /> Quitar filtros</button>
       </div>
     </div>
     <div className="mt-4 flex flex-wrap overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">{cards.map((card, index) => <div key={card.label} className={`min-w-[145px] flex-1 px-4 py-3 ${index ? "border-l border-zinc-800" : ""}`}><span className="block text-[10px] font-black uppercase tracking-wide text-zinc-500">{card.label}</span><strong className={`mt-1 block text-xl font-black ${card.color}`}>{card.value}</strong></div>)}</div>

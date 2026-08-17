@@ -77,7 +77,8 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
 
   function openShelfDetails() {
     if (!selectedCode) return;
-    document.getElementById(`estanteria-${selectedCode}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const exactLocation = focusedLocation ? document.getElementById(`ubicacion-${focusedLocation}`) : null;
+    (exactLocation || document.getElementById(`estanteria-${selectedCode}`))?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   function beginEditing() {
@@ -204,6 +205,13 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
 
   const focusedParts = focusedLocation?.match(/^DESGUACE-E\d{2}-N(\d{2})-C(\d{2})$/);
   const focusedElement = focusedShelf ? elements.find((element) => element.tipo === "estanteria" && element.codigo_estanteria === focusedShelf) : null;
+  const focusedViewBox = focusedElement ? (() => {
+    const width = 520;
+    const height = 440;
+    const centerX = focusedElement.x + focusedElement.ancho / 2;
+    const centerY = focusedElement.y + focusedElement.alto / 2;
+    return `${Math.max(0, Math.min(1200 - width, centerX - width / 2))} ${Math.max(0, Math.min(1500 - height, centerY - height / 2))} ${width} ${height}`;
+  })() : "0 0 1200 1500";
 
   return <section id="plano-fisico" className="mx-auto w-full scroll-mt-5 overflow-hidden rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl" style={{ maxWidth: 680 }}>
     <header className="border-b border-zinc-800 bg-zinc-950/70 p-5">
@@ -230,7 +238,8 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
     </div>}
 
     <div className="bg-[#111318] p-3 sm:p-4">
-      <svg ref={svgRef} viewBox="0 0 1200 1500" className="mx-auto block w-full select-none" style={{ maxWidth: 540, touchAction: editing ? "none" : "auto" }} role="img" aria-label="Plano superior interactivo del almacén desguace" onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={() => editing && setSelectedElementId(null)}>
+      {!editing && focusedElement && focusedParts && <div className="mb-3 flex items-center gap-3 rounded-xl border border-cyan-400/40 bg-cyan-500/10 p-3"><MapPin className="shrink-0 text-cyan-300" size={22} /><div><p className="font-black text-white">{focusedShelf} · Nivel {Number(focusedParts[1])} · Hueco {Number(focusedParts[2])}</p><p className="font-mono text-xs text-cyan-200">{focusedLocation}</p></div></div>}
+      <svg ref={svgRef} viewBox={editing ? "0 0 1200 1500" : focusedViewBox} preserveAspectRatio="xMidYMid meet" className="mx-auto block w-full select-none" style={{ maxWidth: 540, touchAction: editing ? "none" : "auto" }} role="img" aria-label="Plano superior interactivo del almacén desguace" onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={() => editing && setSelectedElementId(null)}>
         <defs>
           <pattern id="floor-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#27272a" strokeWidth="1" /></pattern>
           <pattern id="blocked-hatch" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="18" height="18" fill="#09090b" /><line x1="0" y1="0" x2="0" y2="18" stroke="#27272a" strokeWidth="7" /></pattern>

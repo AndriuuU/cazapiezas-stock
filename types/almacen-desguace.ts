@@ -202,6 +202,7 @@ export interface VentaDesguace {
   fecha_venta: string;
   empleado: string;
   precio_final: number;
+  forma_pago: string;
   observaciones: string | null;
   registrada_at: string;
 }

@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, History, LayoutDashboard, MapPinned, Warehouse } from "lucide-react";
+import { Archive, History, Layers3, LayoutDashboard, MapPinned, Warehouse } from "lucide-react";
 
 const navigation = [
-  { href: "/almacen-desguace/resumen", label: "Resumen", icon: LayoutDashboard },
-  { href: "/almacen-desguace/cajones", label: "Cajones", icon: Archive },
+  { href: "/almacen-desguace", label: "Almacén", icon: Warehouse, exact: true },
   { href: "/almacen-desguace/plano", label: "Plano", icon: MapPinned },
+  { href: "/almacen-desguace/cajones", label: "Cajones", icon: Archive },
+  { href: "/almacen-desguace/estanterias", label: "Estanterías", icon: Layers3 },
+  { href: "/almacen-desguace/resumen", label: "Resumen", icon: LayoutDashboard },
   { href: "/almacen-desguace/historial", label: "Historial", icon: History },
-  { href: "/almacen-desguace/estanterias", label: "Estanterías", icon: Warehouse },
 ];
 
 export default function DesktopWarehouseNav() {
@@ -23,8 +24,8 @@ export default function DesktopWarehouseNav() {
       >
         <div className="mx-auto max-w-[1500px] overflow-x-auto px-4 sm:px-6">
           <div className="flex min-w-max items-center gap-2 py-2.5">
-            {navigation.map(({ href, label, icon: Icon }) => {
-              const active = pathname.startsWith(href);
+            {navigation.map(({ href, label, icon: Icon, exact }) => {
+              const active = exact ? pathname === href : pathname.startsWith(href);
 
               return (
                 <Link

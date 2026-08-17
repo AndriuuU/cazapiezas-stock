@@ -1,5 +1,6 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 import Link from "next/link";
-import { ArrowLeft, Database, History } from "lucide-react";
+import { ArrowLeft, Database, Download, History, Trash2 } from "lucide-react";
 import AuditHistory from "@/components/almacen-desguace/AuditHistory";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
 import MovementHistory from "@/components/almacen-desguace/MovementHistory";
@@ -29,7 +30,7 @@ export default async function HistorialAlmacenPage() {
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link>
-        <span className="inline-flex items-center gap-2 rounded-full bg-cyan-500/10 px-3 py-1.5 text-sm font-bold text-cyan-300"><History size={16} /> {events.length} eventos recientes</span>
+        <div className="flex flex-wrap items-center gap-2"><a href="/api/almacen-desguace/backup" className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/30 px-3 py-2 text-sm font-bold text-emerald-300 hover:bg-emerald-500/10"><Download size={16} /> Descargar copia</a><Link href="/almacen-desguace/papelera" className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 px-3 py-2 text-sm font-bold text-red-300 hover:bg-red-500/10"><Trash2 size={16} /> Papelera</Link><span className="inline-flex items-center gap-2 rounded-full bg-cyan-500/10 px-3 py-1.5 text-sm font-bold text-cyan-300"><History size={16} /> {events.length} eventos recientes</span></div>
       </div>
 
       {!auditReady

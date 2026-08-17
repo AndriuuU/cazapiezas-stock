@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { protectApiRequest } from "@/lib/request-security";
-import { getSupabaseRestConfig } from "@/lib/supabase";
+import { getSupabaseApiConfig, supabaseHeaders } from "@/lib/supabase-rest";
 
 const EMPLOYEES_REFERENCE = "__EMPLOYEES__";
-const DEFAULT_EMPLOYEES = ["Empleado"];
+const DEFAULT_EMPLOYEES = ["Andrés", "Santi", "Fran"];
 
 interface EmployeeConfigRow {
   name: string;
@@ -14,18 +14,17 @@ function normalizeEmployees(value: unknown) {
     return [];
   }
 
+  const seen = new Set<string>();
   return value
-    .map((employee) => String(employee).trim())
+    .map((employee) => String(employee).trim().replace(/\s+/g, " ").slice(0, 100))
     .filter(Boolean)
-    .filter((employee, index, employees) => employees.indexOf(employee) === index);
-}
-
-function getSupabaseHeaders(anonKey: string) {
-  return {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
-    "Content-Type": "application/json",
-  };
+    .filter((employee) => {
+      const key = employee.toLocaleLowerCase("es");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 50);
 }
 
 export async function GET(request: Request) {
@@ -40,11 +39,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { url, anonKey } = getSupabaseRestConfig();
+    const { url, key } = getSupabaseApiConfig();
     const response = await fetch(
       `${url}/rest/v1/stock_adjustments?select=name&reference=eq.${EMPLOYEES_REFERENCE}&order=created_at.desc&limit=1`,
       {
-        headers: getSupabaseHeaders(anonKey),
+        headers: supabaseHeaders(key),
       }
     );
 
@@ -55,9 +54,10 @@ export async function GET(request: Request) {
     const rows = (await response.json()) as EmployeeConfigRow[];
     const config = rows[0]?.name ? JSON.parse(rows[0].name) : null;
     const employees = normalizeEmployees(config?.employees);
+    const onlyLegacyPlaceholder = employees.length === 1 && employees[0].toLocaleLowerCase("es") === "empleado";
 
     return NextResponse.json({
-      employees: employees.length > 0 ? employees : DEFAULT_EMPLOYEES,
+      employees: employees.length > 0 && !onlyLegacyPlaceholder ? employees : DEFAULT_EMPLOYEES,
     });
   } catch {
     return NextResponse.json({ employees: DEFAULT_EMPLOYEES });
@@ -86,11 +86,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const { url, anonKey } = getSupabaseRestConfig();
+    const { url, key } = getSupabaseApiConfig();
     const response = await fetch(`${url}/rest/v1/stock_adjustments?select=*`, {
       method: "POST",
       headers: {
-        ...getSupabaseHeaders(anonKey),
+        ...supabaseHeaders(key),
         Prefer: "return=representation",
       },
       body: JSON.stringify({

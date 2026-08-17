@@ -61,6 +61,7 @@ async function loadSalesIndex(url: string, key: string) {
       fecha_venta: String(detailedSale ? value.fecha_venta || event.created_at : event.created_at),
       empleado: String(detailedSale ? value.empleado || "Sin indicar" : event.usuario_nombre || "Usuario de almacén"),
       precio_final: Number(detailedSale ? value.precio_final ?? currentPiece?.precio_venta ?? 0 : value.precio_venta ?? currentPiece?.precio_venta ?? 0),
+      forma_pago: String(detailedSale ? value.forma_pago || "No indicada" : "No indicada"),
       observaciones: value.observaciones ? String(value.observaciones) : null,
       registrada_at: event.created_at,
     });
@@ -71,6 +72,7 @@ async function loadSalesIndex(url: string, key: string) {
       fecha_venta: "",
       empleado: "Sin historial disponible",
       precio_final: Number(piece.precio_venta || 0),
+      forma_pago: "No indicada",
       observaciones: null,
       registrada_at: "",
     });
@@ -112,15 +114,25 @@ export async function GET(request: Request) {
     });
     const requestedView = query.get("vista");
     const view = requestedView === "retiradas" || requestedView === "vendidas" ? requestedView : "almacen";
+    const saleDateSort = view === "vendidas" && ["sale_date.desc", "sale_date.asc"].includes(query.get("sort") || "");
+    if (saleDateSort && !allIds) {
+      params.set("limit", "10000");
+      params.set("offset", "0");
+    }
     params.set("estado_proceso", view === "retiradas" ? "eq.Retirada" : view === "vendidas" ? "eq.Vendida" : "not.in.(Retirada,Vendida)");
     const { url, key } = getSupabaseApiConfig();
     const salesIndex = view === "vendidas" ? await loadSalesIndex(url, key) : new Map<number, VentaDesguace>();
     const saleFrom = /^\d{4}-\d{2}-\d{2}$/.test(query.get("venta_desde") || "") ? query.get("venta_desde")! : "";
     const saleTo = /^\d{4}-\d{2}-\d{2}$/.test(query.get("venta_hasta") || "") ? query.get("venta_hasta")! : "";
-    if (view === "vendidas" && (saleFrom || saleTo)) {
+    const saleEmployee = (query.get("empleado_venta") || "").trim().toLocaleLowerCase("es");
+    const salePayment = (query.get("forma_pago") || "").trim().toLocaleLowerCase("es");
+    if (view === "vendidas" && (saleFrom || saleTo || saleEmployee || salePayment)) {
       const matchingIds = [...salesIndex.entries()].filter(([, sale]) => {
         const keyDate = madridDateKey(sale.fecha_venta);
-        return Boolean(keyDate) && (!saleFrom || keyDate >= saleFrom) && (!saleTo || keyDate <= saleTo);
+        const dateMatches = (!saleFrom && !saleTo) || (Boolean(keyDate) && (!saleFrom || keyDate >= saleFrom) && (!saleTo || keyDate <= saleTo));
+        const employeeMatches = !saleEmployee || sale.empleado.trim().toLocaleLowerCase("es") === saleEmployee;
+        const paymentMatches = !salePayment || sale.forma_pago.trim().toLocaleLowerCase("es") === salePayment;
+        return dateMatches && employeeMatches && paymentMatches;
       }).map(([id]) => id);
       params.set("id", matchingIds.length ? `in.(${matchingIds.join(",")})` : "eq.-1");
     }
@@ -156,7 +168,7 @@ export async function GET(request: Request) {
       summaryParams.delete("order");
       const summaryResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${summaryParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
       const summaryPieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "precio_venta" | "precio_coste">>>(summaryResponse);
-      const vatRate = [0, 4, 10, 21].includes(Number(query.get("iva"))) ? Number(query.get("iva")) : 21;
+      const vatRate = 21;
       const gross = summaryPieces.reduce((sum, piece) => sum + Number(salesIndex.get(piece.id)?.precio_final ?? piece.precio_venta ?? 0), 0);
       const vat = vatRate ? gross * vatRate / (100 + vatRate) : 0;
       const costs = summaryPieces.reduce((sum, piece) => sum + Number(piece.precio_coste || 0), 0);
@@ -192,12 +204,18 @@ export async function GET(request: Request) {
       const total = totalValue && totalValue !== "*" ? Number(totalValue) : piezas.length;
       return NextResponse.json({ ids: piezas.map((pieza) => pieza.id), total }, { headers: { "Cache-Control": "no-store" } });
     }
-    const items = await Promise.all(piezas.map(async (pieza) => {
+    const sortedPieces = saleDateSort ? [...piezas].sort((a, b) => {
+      const left = salesIndex.get(a.id)?.fecha_venta || "";
+      const right = salesIndex.get(b.id)?.fecha_venta || "";
+      return (query.get("sort") === "sale_date.asc" ? 1 : -1) * left.localeCompare(right);
+    }) : piezas;
+    const visiblePieces = saleDateSort ? sortedPieces.slice(offset, offset + pageSize) : sortedPieces;
+    const items = await Promise.all(visiblePieces.map(async (pieza) => {
       const principal = (pieza.fotos || []).find((foto) => foto.es_principal) || pieza.fotos?.[0];
       return principal ? { ...pieza, fotos: [(await withPublicPhotos({ ...pieza, fotos: [principal] })).fotos![0]] } : pieza;
     }));
     const enrichedItems = view === "vendidas" ? items.map((piece) => ({ ...piece, venta: salesIndex.get(piece.id) || null })) : items;
-    const total = totalValue && totalValue !== "*" ? Number(totalValue) : enrichedItems.length;
+    const total = saleDateSort ? piezas.length : totalValue && totalValue !== "*" ? Number(totalValue) : enrichedItems.length;
     return NextResponse.json({
       items: enrichedItems,
       page,
@@ -206,6 +224,8 @@ export async function GET(request: Request) {
       totalPages: Math.max(1, Math.ceil(total / pageSize)),
       categories: await getCategories(url, key),
       salesSummary,
+      salesEmployees: view === "vendidas" ? [...new Set([...salesIndex.values()].map((sale) => sale.empleado.trim()).filter((name) => name && name !== "Sin historial disponible"))].sort((a, b) => a.localeCompare(b, "es")) : [],
+      salesPaymentMethods: view === "vendidas" ? [...new Set([...salesIndex.values()].map((sale) => sale.forma_pago.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")) : [],
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "No se pudo cargar el almacén." }, { status: 500 });
