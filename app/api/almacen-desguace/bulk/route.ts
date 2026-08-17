@@ -27,8 +27,9 @@ export async function PATCH(request: Request) {
       ALLOWED_FIELDS.filter((field) => field in normalized).map((field) => [field, normalized[field]])
     ) as PiezaDesguaceInput;
     if (!Object.keys(changes).length) return NextResponse.json({ error: "Elige el cambio que quieres aplicar." }, { status: 400 });
+    if (changes.estado_proceso === "Vendida") return NextResponse.json({ error: "Las ventas se registran individualmente con fecha, empleado y precio final." }, { status: 400 });
     if (changes.estado_proceso === "Publicada") Object.assign(changes, { publicado_online: true });
-    if (changes.estado_proceso === "Retirada" || changes.estado_proceso === "Vendida") Object.assign(changes, { publicado_online: false, ubicacion: null, cajon_id: null });
+    if (changes.estado_proceso === "Retirada") Object.assign(changes, { publicado_online: false, ubicacion: null, cajon_id: null });
     const errors = validatePieza(changes);
     if (errors.length) return NextResponse.json({ error: errors.join(" ") }, { status: 400 });
 

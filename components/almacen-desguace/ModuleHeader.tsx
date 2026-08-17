@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, Warehouse } from "lucide-react";
+import DesktopWarehouseNav from "@/components/almacen-desguace/DesktopWarehouseNav";
 import MobileWarehouseNav from "@/components/almacen-desguace/MobileWarehouseNav";
 import VersionBadge from "@/components/almacen-desguace/VersionBadge";
 
@@ -19,6 +20,7 @@ export default function ModuleHeader({ title, subtitle }: { title?: string; subt
         </Link>
       </div>
     </header>
+    <DesktopWarehouseNav />
     <MobileWarehouseNav />
   </>);
 }

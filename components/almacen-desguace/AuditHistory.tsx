@@ -47,6 +47,10 @@ const FIELD_LABELS: Record<string, string> = {
   procedencia: "Procedencia",
   publicado_online: "Online",
   fecha_entrada: "Fecha de entrada",
+  fecha_venta: "Fecha de venta",
+  empleado: "Empleado",
+  precio_final: "Precio final",
+  observaciones: "Observaciones",
   fotos: "Fotografía",
 };
 
