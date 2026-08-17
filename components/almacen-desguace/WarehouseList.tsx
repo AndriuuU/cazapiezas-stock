@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import Link from "next/link";
 import {
   Archive, CalendarDays, Camera, CarFront, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CloudUpload, Edit3, Eye, FilterX,
-  History, Images, Loader2, MapPin, MapPinned, MoreHorizontal, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
+  History, Images, LayoutDashboard, Loader2, MapPin, MapPinned, MoreHorizontal, PackagePlus, PackageX, Plus, ScanBarcode, Search, Send, ShoppingBag,
   RotateCcw, SlidersHorizontal, Sparkles, Upload, Warehouse, X,
 } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
@@ -447,6 +447,9 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
             </Link>
           </div>
           <div className="warehouse-desktop-actions flex-wrap gap-2">
+            <Link href="/almacen-desguace/resumen" className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 font-bold text-amber-300 hover:bg-amber-500/20">
+              <LayoutDashboard size={18} /> Resumen
+            </Link>
             <Link href="/almacen-desguace/cajones" className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-2.5 font-bold text-cyan-200 hover:bg-cyan-500/10">
               <Archive size={18} /> Cajones
             </Link>
