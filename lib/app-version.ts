@@ -4,6 +4,20 @@ export const APP_VERSION = packageMetadata.version;
 
 export const APP_CHANGELOG = [
   {
+    version: "1.3.1",
+    date: "18 de agosto de 2026",
+    changes: [
+      "Nuevo menú de acciones rápidas para trabajar desde móvil y ordenador.",
+      "Escaneo directo para ubicar piezas, registrar ventas y abrir fotografías.",
+      "Modo de ubicación en serie que recuerda el último cajón o continúa por el mismo nivel.",
+      "Accesos rápidos para registrar piezas nuevas e importar piezas IAM desde el menú móvil.",
+      "Formulario de venta rediseñado para móvil, con controles y botones siempre visibles.",
+      "Gestión de empleados integrada justo debajo del selector de empleado.",
+      "Actualización automática del almacén después de ubicar o vender una pieza.",
+      "Mejoras visuales en ventanas, fondos difuminados, calendario y navegación móvil.",
+    ],
+  },
+  {
     version: "1.3.0",
     date: "18 de agosto de 2026",
     changes: [

@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, History, Layers3, LayoutDashboard, MapPinned, Warehouse } from "lucide-react";
+import { Archive, History, Layers3, LayoutDashboard, MapPinned, ScanBarcode, Warehouse } from "lucide-react";
+import MobileQuickActions from "@/components/almacen-desguace/MobileQuickActions";
 
 const navigation = [
   { href: "/almacen-desguace", label: "Almacén", icon: Warehouse, exact: true },
@@ -15,6 +18,14 @@ const navigation = [
 
 export default function DesktopWarehouseNav() {
   const pathname = usePathname();
+  const [quickOpen, setQuickOpen] = useState(false);
+
+  useEffect(() => {
+    if (!quickOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [quickOpen]);
 
   return (
     <>
@@ -43,9 +54,18 @@ export default function DesktopWarehouseNav() {
                 </Link>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setQuickOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-amber-400/70 bg-amber-500/10 px-4 text-sm font-black text-amber-300 transition hover:bg-amber-500 hover:text-zinc-950"
+            >
+              <ScanBarcode size={18} />
+              Acciones rápidas
+            </button>
           </div>
         </div>
       </nav>
+      {quickOpen && createPortal(<MobileQuickActions onClose={() => setQuickOpen(false)} />, document.body)}
       <style jsx global>{`
         .warehouse-desktop-module-nav { display: none; }
         @media (min-width: 640px) {

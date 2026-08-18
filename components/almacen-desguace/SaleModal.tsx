@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarDays, CircleDollarSign, Loader2, Plus, Settings2, ShoppingBag, Trash2, UserRound, X } from "lucide-react";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
 
@@ -34,6 +34,7 @@ export default function SaleModal({
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -117,8 +118,8 @@ export default function SaleModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (!saving && event.target === event.currentTarget) onClose(); }}>
-      <form onSubmit={(event) => void submit(event)} className="max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-zinc-700 bg-zinc-950 shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
+    <div className="fixed inset-0 flex flex-col items-center justify-end bg-black/75 backdrop-blur-lg sm:justify-center sm:p-6" style={{ zIndex: 240 }} onMouseDown={(event) => { if (!saving && event.target === event.currentTarget) onClose(); }}>
+      <form onSubmit={(event) => void submit(event)} className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-950 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl">
         <header className="flex items-start gap-3 border-b border-zinc-800 p-5">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-zinc-950"><ShoppingBag size={22} /></span>
           <div className="min-w-0 flex-1">
@@ -128,11 +129,16 @@ export default function SaleModal({
           <button type="button" disabled={saving} onClick={onClose} aria-label="Cerrar" className="rounded-xl p-2 text-zinc-500 hover:bg-zinc-800 hover:text-white disabled:opacity-40"><X size={21} /></button>
         </header>
 
-        <div className="space-y-4 p-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-5 pb-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-bold text-zinc-300">
               <span className="mb-2 flex items-center gap-2"><CalendarDays size={17} className="text-cyan-300" /> Fecha y hora</span>
-              <input required type="datetime-local" value={date} max={localDateTimeNow()} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-cyan-500" />
+              <div style={{ position: "relative" }}>
+                <input ref={dateInputRef} required type="datetime-local" value={date} max={localDateTimeNow()} onChange={(event) => setDate(event.target.value)} className="sale-date-input w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 pr-12 text-white [color-scheme:dark] outline-none focus:border-cyan-500" />
+                <button type="button" aria-label="Abrir calendario" onClick={() => dateInputRef.current?.showPicker()} className="flex items-center justify-center rounded-lg text-white hover:bg-white/10 active:bg-white/15" style={{ position: "absolute", top: "0.25rem", right: "0.25rem", bottom: "0.25rem", width: "2.5rem", zIndex: 10 }}>
+                  <CalendarDays aria-hidden="true" size={20} strokeWidth={2.2} />
+                </button>
+              </div>
             </label>
             <label className="block text-sm font-bold text-zinc-300">
               <span className="mb-2 flex items-center gap-2"><CircleDollarSign size={17} className="text-emerald-300" /> Precio sin IVA</span>
@@ -143,17 +149,12 @@ export default function SaleModal({
           <label className="block text-sm font-bold text-zinc-300">
             <span className="mb-2 flex items-center gap-2"><UserRound size={17} className="text-amber-300" /> Empleado</span>
             <div className="flex gap-2">
-              <select required autoFocus disabled={employeesLoading} value={employee} onChange={(event) => setEmployee(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-amber-500 disabled:opacity-50">
+              <select required disabled={employeesLoading} value={employee} onChange={(event) => setEmployee(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-amber-500 disabled:opacity-50">
                 <option value="">{employeesLoading ? "Cargando empleados…" : "Selecciona un empleado"}</option>
                 {employees.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
               <button type="button" onClick={() => { setEmployeeDraft(employees); setManagingEmployees((current) => !current); setError(""); }} className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-3 text-zinc-300 hover:border-amber-500/50 hover:text-amber-300" title="Añadir o quitar empleados"><Settings2 size={18} /><span className="hidden sm:inline">Gestionar</span></button>
             </div>
-          </label>
-
-          <label className="block text-sm font-bold text-zinc-300">
-            <span className="mb-2 block">Forma de pago</span>
-            <select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-emerald-500"><option>Recambio Fácil</option><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Bizum</option><option>Contra reembolso</option><option>Otra</option></select>
           </label>
 
           {managingEmployees && <section className="flex max-h-[min(32rem,calc(100dvh-8rem))] flex-col overflow-hidden rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
@@ -166,22 +167,31 @@ export default function SaleModal({
           </section>}
 
           <label className="block text-sm font-bold text-zinc-300">
+            <span className="mb-2 block">Forma de pago</span>
+            <select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-emerald-500"><option>Recambio Fácil</option><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Bizum</option><option>Contra reembolso</option><option>Otra</option></select>
+          </label>
+
+          <label className="block text-sm font-bold text-zinc-300">
             <span className="mb-2 block">Observaciones <small className="font-normal text-zinc-600">(opcional)</small></span>
-            <textarea rows={4} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Forma de pago, cliente, incidencia, descuento…" className="w-full resize-y rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-amber-500" />
+            <textarea rows={2} maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Cliente, incidencia, descuento…" className="min-h-20 w-full resize-none rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-amber-500 sm:min-h-24 sm:resize-y" />
             <span className="mt-1 block text-right text-xs font-normal text-zinc-600">{notes.length}/2000</span>
           </label>
 
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm leading-6 text-amber-100/80">
-            Al confirmar, la pieza saldrá del almacén, dejará de estar Online y liberará {piece.cajon_id ? "su espacio en el cajón" : piece.ubicacion ? `la ubicación ${piece.ubicacion}` : "cualquier ubicación asignada"}. Podrás deshacer la venta desde la pestaña Vendidas.
-          </div>
           {error && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm font-semibold text-red-200">{error}</p>}
         </div>
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-zinc-800 bg-zinc-900/60 p-4 sm:flex-row sm:justify-end">
-          <button type="button" disabled={saving} onClick={onClose} className="rounded-xl border border-zinc-700 px-4 py-2.5 font-bold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40">Cancelar</button>
-          <button type="submit" disabled={saving || employeesLoading || managingEmployees} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBag size={18} />} Confirmar venta</button>
+        <footer className="flex shrink-0 gap-2 border-t border-zinc-800 bg-zinc-900/95 p-3 sm:justify-end sm:p-4">
+          <button type="button" disabled={saving} onClick={onClose} className="min-w-0 flex-1 rounded-xl border border-zinc-700 px-3 py-3 font-bold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 sm:flex-none sm:px-4 sm:py-2.5">Cancelar</button>
+          <button type="submit" disabled={saving || employeesLoading || managingEmployees} className="inline-flex min-w-0 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-3 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50 sm:flex-none sm:px-5 sm:py-2.5">{saving ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBag size={18} />} Confirmar venta</button>
         </footer>
       </form>
+      <div aria-hidden="true" className="w-full shrink-0 sm:hidden" style={{ height: "calc(4.25rem + env(safe-area-inset-bottom))" }} />
+      <style jsx global>{`
+        .sale-date-input::-webkit-calendar-picker-indicator {
+          pointer-events: none;
+          opacity: 0;
+        }
+      `}</style>
     </div>
   );
 }

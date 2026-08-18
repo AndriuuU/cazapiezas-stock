@@ -80,7 +80,7 @@ export default function BarcodeScanner({ onScan, onClose }: { onScan: (value: st
     finish(manualCode);
   }
 
-  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div role="dialog" aria-modal="true" aria-labelledby="barcode-scanner-title" className="w-full max-w-lg overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-2xl">
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3"><div><h2 id="barcode-scanner-title" className="flex items-center gap-2 font-bold text-white"><ScanBarcode className="text-cyan-400" /> Escanear referencia</h2><p className="mt-0.5 text-xs text-zinc-500">Busca la pieza mediante el código de barras.</p></div><button onClick={onClose} title="Cerrar" className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"><X /></button></div>
       <div className="space-y-4 p-4">
