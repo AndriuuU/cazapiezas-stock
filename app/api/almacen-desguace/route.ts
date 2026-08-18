@@ -169,17 +169,18 @@ export async function GET(request: Request) {
       const summaryResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${summaryParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
       const summaryPieces = await parseSupabaseResponse<Array<Pick<PiezaDesguace, "id" | "precio_venta" | "precio_coste">>>(summaryResponse);
       const vatRate = 21;
-      const gross = summaryPieces.reduce((sum, piece) => sum + Number(salesIndex.get(piece.id)?.precio_final ?? piece.precio_venta ?? 0), 0);
-      const vat = vatRate ? gross * vatRate / (100 + vatRate) : 0;
+      const net = summaryPieces.reduce((sum, piece) => sum + Number(salesIndex.get(piece.id)?.precio_final ?? piece.precio_venta ?? 0), 0);
+      const vat = net * vatRate / 100;
+      const gross = net + vat;
       const costs = summaryPieces.reduce((sum, piece) => sum + Number(piece.precio_coste || 0), 0);
       salesSummary = {
         count: summaryPieces.length,
         gross: Math.round(gross * 100) / 100,
-        net: Math.round((gross - vat) * 100) / 100,
+        net: Math.round(net * 100) / 100,
         vat: Math.round(vat * 100) / 100,
         vatRate,
         costs: Math.round(costs * 100) / 100,
-        margin: Math.round((gross - vat - costs) * 100) / 100,
+        margin: Math.round((net - costs) * 100) / 100,
         average: summaryPieces.length ? Math.round(gross / summaryPieces.length * 100) / 100 : 0,
         withoutDate: summaryPieces.filter((piece) => !salesIndex.get(piece.id)?.fecha_venta).length,
       };

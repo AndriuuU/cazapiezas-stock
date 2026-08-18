@@ -777,17 +777,17 @@ function SalesSummaryPanel({
   const money = (value: number | undefined) => new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(value || 0);
   const cards = [
     { label: "Ventas", value: String(summary?.count || 0), color: "text-white" },
-    { label: "Facturación · IVA incluido", value: money(summary?.gross), color: "text-emerald-300" },
+    { label: "Total con IVA", value: money(summary?.gross), color: "text-emerald-300" },
     { label: "Base sin IVA", value: money(summary?.net), color: "text-cyan-300" },
-    { label: "IVA incluido · 21 %", value: money(summary?.vat), color: "text-amber-300" },
+    { label: "IVA añadido · 21 %", value: money(summary?.vat), color: "text-amber-300" },
     { label: "Coste registrado", value: money(summary?.costs), color: "text-zinc-300" },
     { label: "Margen bruto estimado", value: money(summary?.margin), color: "text-violet-300" },
-    { label: "Venta media", value: money(summary?.average), color: "text-blue-300" },
+    { label: "Venta media · con IVA", value: money(summary?.average), color: "text-blue-300" },
   ];
 
   return <section className={`rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 transition-opacity sm:p-5 ${loading ? "opacity-60" : ""}`}>
     <div>
-      <div><h2 className="flex items-center gap-2 text-lg font-black text-white"><BadgeEuro className="text-emerald-300" size={22} /> Resumen de ventas</h2><p className="mt-1 text-sm text-zinc-500">Importes calculados sobre el precio final, suponiendo que ya incluye IVA. El margen resta el IVA y el coste registrado.</p></div>
+      <div><h2 className="flex items-center gap-2 text-lg font-black text-white"><BadgeEuro className="text-emerald-300" size={22} /> Resumen de ventas</h2><p className="mt-1 text-sm text-zinc-500">El precio registrado es la base sin IVA. La facturación y la venta media añaden automáticamente el 21 %. El margen resta el coste a la base sin IVA.</p></div>
       <div className="mt-4 grid grid-cols-2 items-end gap-2 md:flex md:flex-wrap md:justify-start [&>label]:min-w-0 md:[&>label]:w-44 [&_input]:!w-full [&_select]:!w-full md:[&>button]:w-40">
         <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Vendida desde</span><input aria-label="Vendida desde" type="date" value={from} max={to || today} onChange={(event) => onFrom(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500" /></label>
         <label className="text-xs font-bold text-zinc-400"><span className="mb-1 block">Vendida hasta</span><input aria-label="Vendida hasta" type="date" value={to} min={from || undefined} max={today} onChange={(event) => onTo(event.target.value)} className="min-h-10 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none focus:border-emerald-500" /></label>

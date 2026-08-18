@@ -135,7 +135,7 @@ export default function SaleModal({
               <input required type="datetime-local" value={date} max={localDateTimeNow()} onChange={(event) => setDate(event.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-cyan-500" />
             </label>
             <label className="block text-sm font-bold text-zinc-300">
-              <span className="mb-2 flex items-center gap-2"><CircleDollarSign size={17} className="text-emerald-300" /> Precio final</span>
+              <span className="mb-2 flex items-center gap-2"><CircleDollarSign size={17} className="text-emerald-300" /> Precio sin IVA</span>
               <div className="relative"><input required type="number" min="0" max="999999.99" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 pr-10 text-white outline-none focus:border-emerald-500" /><span className="absolute right-3 top-3 text-zinc-500">€</span></div>
             </label>
           </div>

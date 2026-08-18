@@ -49,7 +49,7 @@ const FIELD_LABELS: Record<string, string> = {
   fecha_entrada: "Fecha de entrada",
   fecha_venta: "Fecha de venta",
   empleado: "Empleado",
-  precio_final: "Precio final",
+  precio_final: "Precio sin IVA",
   observaciones: "Observaciones",
   fotos: "Fotografía",
 };
