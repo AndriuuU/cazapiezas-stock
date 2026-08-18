@@ -35,7 +35,7 @@ export default function WarehouseMap({ shelves, initialLayout, focusedShelf, foc
 
   return <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
     <ModuleHeader title="Plano general del almacén" subtitle="Zonas, estanterías y huecos disponibles de un vistazo" />
-    <div className="mx-auto max-w-[1600px] space-y-5 px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
       <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between"><Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link><div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto"><Link href="/almacen-desguace/cajones" className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-3 py-2.5 text-sm font-bold text-cyan-200 sm:px-4"><Box className="shrink-0" size={17} /><span className="sm:hidden">Cajones</span><span className="hidden sm:inline">Gestionar cajones</span></Link><Link href="/almacen-desguace/estanterias" className="inline-flex min-w-0 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm font-bold text-zinc-200 hover:border-amber-500/40 hover:text-amber-300 sm:px-4"><Settings2 className="shrink-0" size={17} /><span className="sm:hidden">Estanterías</span><span className="hidden sm:inline">Configurar estanterías</span></Link></div></div>
 
       <section className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>

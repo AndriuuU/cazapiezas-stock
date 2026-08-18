@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Box, Check, Edit3, Layers3, MapPin, Plus, RotateCw, Save, Trash2, Warehouse, X } from "lucide-react";
+import { Box, Check, Crosshair, Edit3, Layers3, MapPin, Maximize2, Plus, RotateCw, Save, Trash2, Warehouse, X } from "lucide-react";
 import type { ElementoPlanoAlmacen, EstanteriaPlanoAlmacen } from "@/types/almacen-desguace";
 
 type DefaultShelf = Omit<ElementoPlanoAlmacen, "id" | "tipo" | "nombre" | "color" | "orden"> & { physicalLabel: string };
@@ -58,6 +58,7 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
   const [selectedElementId, setSelectedElementId] = useState<number | string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showFullPlan, setShowFullPlan] = useState(false);
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [shelfToAdd, setShelfToAdd] = useState("");
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -206,14 +207,14 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
   const focusedParts = focusedLocation?.match(/^DESGUACE-E\d{2}-N(\d{2})-C(\d{2})$/);
   const focusedElement = focusedShelf ? elements.find((element) => element.tipo === "estanteria" && element.codigo_estanteria === focusedShelf) : null;
   const focusedViewBox = focusedElement ? (() => {
-    const width = 520;
-    const height = 440;
+    const width = 860;
+    const height = 760;
     const centerX = focusedElement.x + focusedElement.ancho / 2;
     const centerY = focusedElement.y + focusedElement.alto / 2;
     return `${Math.max(0, Math.min(1200 - width, centerX - width / 2))} ${Math.max(0, Math.min(1500 - height, centerY - height / 2))} ${width} ${height}`;
   })() : "0 0 1200 1500";
 
-  return <section id="plano-fisico" className="mx-auto w-full scroll-mt-5 overflow-hidden rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl" style={{ maxWidth: 680 }}>
+  return <section id="plano-fisico" className="mx-auto w-full scroll-mt-24 overflow-hidden rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl" style={{ maxWidth: 680 }}>
     <header className="border-b border-zinc-800 bg-zinc-950/70 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -238,8 +239,8 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
     </div>}
 
     <div className="bg-[#111318] p-3 sm:p-4">
-      {!editing && focusedElement && focusedParts && <div className="mb-3 flex items-center gap-3 rounded-xl border border-cyan-400/40 bg-cyan-500/10 p-3"><MapPin className="shrink-0 text-cyan-300" size={22} /><div><p className="font-black text-white">{focusedShelf} · Nivel {Number(focusedParts[1])} · Hueco {Number(focusedParts[2])}</p><p className="font-mono text-xs text-cyan-200">{focusedLocation}</p></div></div>}
-      <svg ref={svgRef} viewBox={editing ? "0 0 1200 1500" : focusedViewBox} preserveAspectRatio="xMidYMid meet" className="mx-auto block w-full select-none" style={{ maxWidth: 540, touchAction: editing ? "none" : "auto" }} role="img" aria-label="Plano superior interactivo del almacén desguace" onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={() => editing && setSelectedElementId(null)}>
+      {!editing && focusedElement && focusedParts && <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-400/40 bg-cyan-500/10 p-3"><div className="flex min-w-0 items-center gap-3"><MapPin className="shrink-0 text-cyan-300" size={22} /><div className="min-w-0"><p className="font-black text-white">{focusedShelf} · Nivel {Number(focusedParts[1])} · Hueco {Number(focusedParts[2])}</p><p className="truncate font-mono text-xs text-cyan-200">{focusedLocation}</p></div></div><div className="flex w-full flex-wrap gap-2 sm:w-auto"><button type="button" onClick={() => setShowFullPlan((current) => !current)} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-zinc-950 px-3 text-sm font-black text-cyan-200 hover:border-cyan-300 sm:flex-none">{showFullPlan ? <Crosshair size={17} /> : <Maximize2 size={17} />}{showFullPlan ? "Centrar ubicación" : "Quitar zoom"}</button><Link href="/almacen-desguace/plano#plano-fisico" className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-3 text-sm font-black text-zinc-950 hover:bg-cyan-400 sm:flex-none"><Warehouse size={17} /> Mostrar todas</Link></div></div>}
+      <svg ref={svgRef} viewBox={editing || showFullPlan ? "0 0 1200 1500" : focusedViewBox} preserveAspectRatio="xMidYMid meet" className="mx-auto block w-full select-none" style={{ maxWidth: 540, touchAction: editing ? "none" : "auto" }} role="img" aria-label="Plano superior interactivo del almacén desguace" onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerDown={() => editing && setSelectedElementId(null)}>
         <defs>
           <pattern id="floor-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#27272a" strokeWidth="1" /></pattern>
           <pattern id="blocked-hatch" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="18" height="18" fill="#09090b" /><line x1="0" y1="0" x2="0" y2="18" stroke="#27272a" strokeWidth="7" /></pattern>
