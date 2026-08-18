@@ -1,5 +1,18 @@
 # Historial de versiones
 
+## Versión 1.3.1 · 18 de agosto de 2026
+
+- Nuevo menú de acciones rápidas disponible tanto en móvil como en ordenador.
+- Escaneo directo para ubicar una pieza, registrar su venta o abrir sus fotografías.
+- Nuevo modo de ubicación en serie para guardar varias piezas seguidas.
+- La ubicación en serie recuerda el último cajón utilizado o selecciona el siguiente hueco libre del mismo nivel.
+- Accesos a Nueva pieza e Importar IAM reorganizados dentro del menú móvil.
+- El formulario de venta se adapta mejor a pantallas pequeñas y mantiene sus acciones siempre visibles.
+- El fondo de la venta se difumina sin ocultar ni desenfocar la navegación móvil.
+- Selector de fecha y hora con un botón de calendario claramente visible.
+- La gestión de empleados aparece directamente debajo del empleado seleccionado.
+- El almacén, el plano y los resúmenes se actualizan automáticamente después de ubicar o vender desde las acciones rápidas.
+
 ## Versión 1.3.0 · 18 de agosto de 2026
 
 - Nuevo panel resumen con piezas sin ubicación, sin fotografías, pendientes de publicar e incidencias de Recambio Fácil.

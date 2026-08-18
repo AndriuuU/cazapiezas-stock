@@ -134,6 +134,12 @@ export default function WarehouseList({ initialView = "almacen", initialType = "
     return () => clearTimeout(timer);
   }, [filters.q, load]);
 
+  useEffect(() => {
+    const refreshOpenWarehouse = () => void load();
+    window.addEventListener("warehouse-data-changed", refreshOpenWarehouse);
+    return () => window.removeEventListener("warehouse-data-changed", refreshOpenWarehouse);
+  }, [load]);
+
   function updateFilter(field: keyof Filters, value: string) {
     setFilters((current) => ({ ...current, [field]: value }));
     setPage(1);
