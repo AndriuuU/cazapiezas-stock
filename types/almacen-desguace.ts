@@ -194,6 +194,17 @@ export interface PiezaDesguace {
   updated_at: string;
   fotos?: FotoDesguace[];
   iam?: DetallePiezaIam | null;
+  venta?: VentaDesguace | null;
+}
+
+export interface VentaDesguace {
+  evento_id: number;
+  fecha_venta: string;
+  empleado: string;
+  precio_final: number;
+  forma_pago: string;
+  observaciones: string | null;
+  registrada_at: string;
 }
 
 export type PiezaDesguaceInput = Partial<Omit<

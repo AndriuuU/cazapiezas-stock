@@ -42,14 +42,17 @@ export default function VersionBadge({ className = "" }: { className?: string })
             <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar novedades" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-white sm:h-11 sm:w-11"><X size={20} /></button>
           </header>
 
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 sm:p-6">
-            {APP_CHANGELOG.map((release, index) => <article key={release.version} className={`overflow-hidden rounded-2xl border ${index === 0 ? "border-amber-500/35 bg-amber-500/5" : "border-zinc-800 bg-zinc-900/50"}`}>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6">
+            <div className="relative ml-2 space-y-5 border-l border-zinc-800 pl-5 sm:ml-3 sm:pl-7">
+            {APP_CHANGELOG.map((release, index) => <article key={release.version} className={`relative overflow-visible rounded-2xl border ${index === 0 ? "border-amber-500/35 bg-amber-500/5" : "border-zinc-800 bg-zinc-900/50"}`}>
+              <span aria-hidden="true" className={`absolute -left-[29px] top-4 h-4 w-4 rounded-full border-4 border-zinc-950 sm:-left-[37px] ${index === 0 ? "bg-amber-400 shadow-[0_0_16px_rgba(251,191,36,.55)]" : "bg-cyan-500"}`} />
               <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${index === 0 ? "border-amber-500/20" : "border-zinc-800"}`}>
                 <div className="flex items-baseline gap-1.5"><span className={`font-mono text-sm font-black sm:text-base ${index === 0 ? "text-amber-300" : "text-zinc-200"}`}>v{release.version}</span>{index === 0 && <span className="text-[7px] font-black uppercase tracking-wider text-amber-400">Actual</span>}</div>
                 <time className="text-xs text-zinc-500">{release.date}</time>
               </div>
               <ul className="space-y-2 p-4">{release.changes.map((change) => <li key={change} className="flex gap-2.5 text-sm leading-5 text-zinc-300"><Check size={16} className={`mt-0.5 shrink-0 ${index === 0 ? "text-amber-400" : "text-cyan-400"}`} /><span>{change}</span></li>)}</ul>
             </article>)}
+            </div>
           </div>
         </section>
       </div>,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, ChevronLeft, History, MapPinned, MoreHorizontal, PackageX, Plus, ShoppingBag, Warehouse, X } from "lucide-react";
+import { Archive, ChevronLeft, History, LayoutDashboard, MapPinned, MoreHorizontal, PackageX, Plus, ShoppingBag, Warehouse, X } from "lucide-react";
 import VersionBadge from "@/components/almacen-desguace/VersionBadge";
 
 export default function MobileWarehouseNav() {
@@ -11,7 +11,7 @@ export default function MobileWarehouseNav() {
   const [open, setOpen] = useState(false);
 
   const piecesActive = pathname === "/almacen-desguace";
-  const moreActive = open || pathname.includes("/historial") || pathname.includes("/estanterias");
+  const moreActive = open || pathname.includes("/resumen") || pathname.includes("/historial") || pathname.includes("/estanterias");
 
   return <>
     {open && <>
@@ -22,6 +22,7 @@ export default function MobileWarehouseNav() {
           <button type="button" onClick={() => setOpen(false)} className="rounded-full border border-zinc-700 bg-black p-2 text-zinc-300 active:scale-90" aria-label="Cerrar menú"><X size={20} /></button>
         </div>
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+          <Link onClick={() => setOpen(false)} href="/almacen-desguace/resumen" className={`warehouse-mobile-menu-option ${pathname.includes("/resumen") ? "border-amber-500/60 bg-amber-500/10 text-amber-300" : "border-zinc-700 bg-black text-zinc-200"}`}><LayoutDashboard size={21} /><span>Resumen</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace?view=vendidas" className="warehouse-mobile-menu-option border-zinc-700 bg-black text-zinc-200"><ShoppingBag size={21} /><span>Vendidas</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace?view=retiradas" className="warehouse-mobile-menu-option border-zinc-700 bg-black text-zinc-200"><PackageX size={21} /><span>Retiradas</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace/historial" className={`warehouse-mobile-menu-option ${pathname.includes("/historial") ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300" : "border-zinc-700 bg-black text-zinc-200"}`}><History size={21} /><span>Historial</span></Link>

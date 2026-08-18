@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, FileSpreadsheet, Loader2, Search, Upload } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, Loader2, PackagePlus, Search, Upload } from "lucide-react";
 
 type Preview = {
   total: number; validas: number; invalidas: number; stock: number;
@@ -16,7 +16,8 @@ export default function IamImporter() {
   const [csvPreview, setCsvPreview] = useState<Preview | null>(null);
   const [code, setCode] = useState("");
   const [apiData, setApiData] = useState<ApiResponse | null>(null);
-  const [busy, setBusy] = useState<"csv-preview" | "csv-import" | "api-preview" | "api-import" | "">("");
+  const [manual, setManual] = useState({ referencia: "", referencia2: "", referencia3: "", descripcion: "", marca: "", stock: "1", precio: "", importe_casco: "0", publicado_online: true });
+  const [busy, setBusy] = useState<"manual" | "csv-preview" | "csv-import" | "api-preview" | "api-import" | "">("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -49,9 +50,40 @@ export default function IamImporter() {
     finally { setBusy(""); }
   }
 
+  async function saveManual(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("manual"); setError(""); setSuccess("");
+    try {
+      const response = await fetch("/api/almacen-desguace/iam/importar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "manual", ...manual, stock: Number(manual.stock), precio: Number(manual.precio), importe_casco: Number(manual.importe_casco) }),
+      });
+      const data = await response.json() as ApiResponse;
+      if (!response.ok) throw new Error(data.error || "No se pudo guardar la pieza IAM.");
+      if (data.result) setSuccess(message(data.result));
+      setManual({ referencia: "", referencia2: "", referencia3: "", descripcion: "", marca: "", stock: "1", precio: "", importe_casco: "0", publicado_online: true });
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo guardar la pieza IAM."); }
+    finally { setBusy(""); }
+  }
+
   return <div className="space-y-5">
     {error && <div role="alert" className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 font-semibold text-red-100">{error}</div>}
     {success && <div role="status" className="flex items-start gap-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 font-semibold text-emerald-100"><CheckCircle2 className="shrink-0 text-emerald-400" /> <span>{success} <Link href="/almacen-desguace?tipo_pieza=IAM" className="ml-1 underline">Ver piezas IAM</Link></span></div>}
+
+    <section className="rounded-2xl border border-violet-500/25 bg-zinc-900 p-5">
+      <div className="flex items-start gap-3"><PackagePlus className="mt-1 shrink-0 text-violet-400" /><div><h2 className="text-xl font-black text-white">Añadir una pieza IAM manualmente</h2><p className="mt-1 text-sm text-zinc-400">Úsalo si la pieza ya está en Recambio Fácil pero no tienes su código interno.</p></div></div>
+      <form onSubmit={saveManual} className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ManualField label="Referencia IAM equivalente" required value={manual.referencia} onChange={(value) => setManual((current) => ({ ...current, referencia: value }))} placeholder="9135R9" />
+        <ManualField label="Referencia alternativa 1" value={manual.referencia2} onChange={(value) => setManual((current) => ({ ...current, referencia2: value }))} placeholder="EZCPE000" />
+        <ManualField label="Referencia alternativa 2" value={manual.referencia3} onChange={(value) => setManual((current) => ({ ...current, referencia3: value }))} placeholder="E4V9" />
+        <div className="sm:col-span-2"><ManualField label="Descripción" required value={manual.descripcion} onChange={(value) => setManual((current) => ({ ...current, descripcion: value }))} placeholder="CERRADURA DE PUERTA DELANTERA IZQUIERDA" /></div>
+        <ManualField label="Marca IAM equivalente" required value={manual.marca} onChange={(value) => setManual((current) => ({ ...current, marca: value }))} placeholder="MOTOTO PARTS" />
+        <ManualField label="Importe de venta (€)" required type="number" min="0" step="0.01" value={manual.precio} onChange={(value) => setManual((current) => ({ ...current, precio: value }))} placeholder="15,00" />
+        <ManualField label="Importe casco (€)" required type="number" min="0" step="0.01" value={manual.importe_casco} onChange={(value) => setManual((current) => ({ ...current, importe_casco: value }))} />
+        <ManualField label="Stock" required type="number" min="0" step="1" value={manual.stock} onChange={(value) => setManual((current) => ({ ...current, stock: value }))} />
+        <label className="flex min-h-12 items-center gap-3 self-end rounded-xl border border-zinc-700 bg-zinc-950 px-4 font-bold text-zinc-200"><input type="checkbox" checked={manual.publicado_online} onChange={(event) => setManual((current) => ({ ...current, publicado_online: event.target.checked }))} className="size-4 accent-violet-500" /><span>Ya está publicada en R/F</span></label>
+        <button type="submit" disabled={Boolean(busy)} className="inline-flex min-h-12 items-center justify-center gap-2 self-end rounded-xl bg-violet-500 px-5 font-black text-white disabled:opacity-40">{busy === "manual" ? <Loader2 className="animate-spin" /> : <PackagePlus size={19} />} Guardar pieza IAM</button>
+      </form>
+    </section>
 
     <section className="rounded-2xl border border-cyan-500/25 bg-zinc-900 p-5">
       <div className="flex items-start gap-3"><Search className="mt-1 shrink-0 text-cyan-400" /><div><h2 className="text-xl font-black text-white">Buscar una pieza IAM en Recambio Fácil</h2><p className="mt-1 text-sm text-zinc-400">Escribe el código interno de la pieza. Se consulta mediante <span className="font-mono text-cyan-300">/IAM/código?idcliente=…</span>.</p></div></div>
@@ -71,3 +103,4 @@ export default function IamImporter() {
 function message(result: Result) { return `${result.insertadas} pieza${result.insertadas === 1 ? "" : "s"} IAM añadida${result.insertadas === 1 ? "" : "s"} y ${result.actualizadas} actualizada${result.actualizadas === 1 ? "" : "s"}.`; }
 function money(value: number | null | undefined) { return value == null ? "-" : `${Number(value).toFixed(2)} €`; }
 function Stat({ label, value }: { label: string; value: number }) { return <div className="rounded-xl bg-zinc-950 p-3"><p className="text-xs text-zinc-500">{label}</p><p className="mt-1 text-xl font-black text-white">{value.toLocaleString("es-ES")}</p></div>; }
+function ManualField({ label, value, onChange, required, type = "text", min, step, placeholder }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string; min?: string; step?: string; placeholder?: string }) { return <label className="block"><span className="mb-1.5 block text-sm font-bold text-zinc-300">{label}{required ? " *" : ""}</span><input required={required} type={type} min={min} step={step} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="min-h-12 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-white outline-none placeholder:text-zinc-600 focus:border-violet-500" /></label>; }

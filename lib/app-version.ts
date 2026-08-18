@@ -4,6 +4,41 @@ export const APP_VERSION = packageMetadata.version;
 
 export const APP_CHANGELOG = [
   {
+    version: "1.3.0",
+    date: "18 de agosto de 2026",
+    changes: [
+      "Nuevo panel resumen con avisos y accesos directos para organizar el almacén.",
+      "Actividad reciente más compacta para entradas, ventas y retiradas.",
+      "Sistema de ventas con fecha, empleado, precio final, forma de pago y observaciones.",
+      "Liberación automática de ubicaciones y posibilidad de deshacer ventas accidentales.",
+      "Resumen de facturación, base imponible, IVA, coste y margen estimado.",
+      "Filtros y detalles mejorados en la pestaña de piezas vendidas.",
+      "Gestión persistente de empleados activos e inactivos.",
+      "Historial de cada pieza presentado como una línea temporal.",
+      "Copias de seguridad y papelera para recuperar piezas eliminadas.",
+      "Retiradas trasladadas a una sección secundaria.",
+      "Navegación superior permanente en ordenador y mejoras del menú móvil.",
+      "Pantallas de carga para Historial, Plano, estanterías, huecos y cajones.",
+      "Plano más compacto y coherente con el diseño general.",
+      "Resaltado de estantería, nivel y hueco exactos de cada ubicación.",
+      "Controles para quitar el zoom, centrar la ubicación y mostrar todas las estanterías.",
+      "Alta manual de piezas IAM sin conocer su código interno de Recambio Fácil.",
+      "Mejoras generales de filtros, ventanas, adaptación móvil y rendimiento.",
+    ],
+  },
+  {
+    version: "1.2.1",
+    date: "7 de agosto de 2026",
+    changes: [
+      "Piezas IAM almacenadas junto a las CAT e identificadas por su tipo.",
+      "Importación IAM desde la API de Recambio Fácil y desde CSV con vista previa.",
+      "Reimportación de IAM sin duplicados.",
+      "Filtros CAT e IAM y ficha con los datos específicos de cada pieza IAM.",
+      "Protección frente a publicaciones IAM accidentales mediante el endpoint CAT.",
+      "Acceso directo a las piezas IAM publicadas en Recambio Fácil.",
+    ],
+  },
+  {
     version: "1.1.1",
     date: "5 de agosto de 2026",
     changes: [

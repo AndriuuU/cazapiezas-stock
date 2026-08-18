@@ -25,11 +25,16 @@ function firstFreeLocationInLevels(shelf: EstanteriaRow, occupied: Set<string>, 
   return null;
 }
 
-export async function getShelves() {
+export async function getShelves(focusedShelf?: string) {
   const { url, key } = getSupabaseApiConfig();
   const shelvesParams = new URLSearchParams({ select: "*", order: "zona.asc,orden_plano.asc,codigo.asc", limit: "500" });
   const locationsParams = new URLSearchParams({ select: "ubicacion,cajon_id", ubicacion: "not.is.null", limit: "10000" });
   const drawersParams = new URLSearchParams({ select: "ubicacion", limit: "5000" });
+  if (focusedShelf && /^E\d{2}$/.test(focusedShelf)) {
+    shelvesParams.set("codigo", `eq.${focusedShelf}`);
+    locationsParams.set("ubicacion", `like.DESGUACE-${focusedShelf}-*`);
+    drawersParams.set("ubicacion", `like.DESGUACE-${focusedShelf}-*`);
+  }
   const [shelvesResponse, locationsResponse, drawersResponse] = await Promise.all([
     fetch(`${url}/rest/v1/almacen_desguace_estanterias?${shelvesParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
     fetch(`${url}/rest/v1/almacen_desguace_piezas?${locationsParams}`, { headers: supabaseHeaders(key), cache: "no-store" }),
@@ -71,7 +76,7 @@ export async function getShelves() {
   });
 }
 
-export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
+export async function getWarehousePlan(focusedShelf?: string): Promise<EstanteriaPlanoAlmacen[]> {
   const { url, key } = getSupabaseApiConfig();
   const piecesParams = new URLSearchParams({
     select: "id,codigo_interno,nombre_pieza,categoria,ubicacion,cajon_id",
@@ -81,8 +86,14 @@ export async function getWarehousePlan(): Promise<EstanteriaPlanoAlmacen[]> {
   });
   const drawersParams = new URLSearchParams({ select: "*", limit: "5000" });
   const drawerPiecesParams = new URLSearchParams({ select: "cajon_id,codigo_interno,nombre_pieza,referencia_principal,referencia_oem,matricula_vehiculo", cajon_id: "not.is.null", limit: "10000" });
+  if (focusedShelf && /^E\d{2}$/.test(focusedShelf)) {
+    const locationFilter = `like.DESGUACE-${focusedShelf}-*`;
+    piecesParams.set("ubicacion", locationFilter);
+    drawersParams.set("ubicacion", locationFilter);
+    drawerPiecesParams.set("ubicacion", locationFilter);
+  }
   const [shelves, piecesResponse, drawersResponse, drawerPiecesResponse] = await Promise.all([
-    getShelves(),
+    getShelves(focusedShelf),
     fetch(`${url}/rest/v1/almacen_desguace_piezas?${piecesParams}`, {
       headers: supabaseHeaders(key),
       cache: "no-store",
