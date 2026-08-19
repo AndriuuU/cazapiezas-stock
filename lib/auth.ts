@@ -1,6 +1,8 @@
+import type { AppUser } from "@/lib/app-users";
+
 const SESSION_COOKIE_NAME = "cazapiezas_session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
-const SESSION_VERSION = "v1";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+const SESSION_VERSION = "v3";
 
 export const sessionCookieName = SESSION_COOKIE_NAME;
 
@@ -74,9 +76,10 @@ export function isValidLoginPassword(password: string) {
   return Boolean(configuredPassword) && safeEquals(password, configuredPassword);
 }
 
-export async function createSessionToken(now = Date.now()) {
+export async function createSessionToken(user: AppUser = { id: "legacy-admin", nombre: "Administrador", rol: "administrador" }, now = Date.now()) {
   const expiresAt = now + SESSION_MAX_AGE_SECONDS * 1000;
-  const payload = `${SESSION_VERSION}.${expiresAt}`;
+  const encodedPayload = encodeText(JSON.stringify({ exp: expiresAt, uid: user.id, name: user.nombre, role: user.rol }));
+  const payload = `${SESSION_VERSION}.${encodedPayload}`;
   const signature = await sign(payload);
 
   if (!signature) {
@@ -87,24 +90,44 @@ export async function createSessionToken(now = Date.now()) {
 }
 
 export async function verifySessionToken(token?: string) {
-  if (!token || !isAuthConfigured()) {
-    return false;
-  }
+  return Boolean(await getSessionFromToken(token));
+}
 
-  const [version, expiresAtValue, signature] = token.split(".");
-  const expiresAt = Number(expiresAtValue);
+export async function getSessionFromToken(token?: string): Promise<AppUser | null> {
+  if (!token || !isAuthConfigured()) return null;
 
-  if (version !== SESSION_VERSION || !Number.isFinite(expiresAt) || !signature) {
-    return false;
-  }
+  const [version, payloadValue, signature] = token.split(".");
+  if (!signature) return null;
 
-  if (Date.now() > expiresAt) {
-    return false;
-  }
+  if (version !== SESSION_VERSION) return null;
+  const expectedSignature = await sign(`${version}.${payloadValue}`);
+  if (!safeEquals(signature, expectedSignature)) return null;
 
-  const expectedSignature = await sign(`${version}.${expiresAtValue}`);
+  try {
+    const payload = JSON.parse(decodeText(payloadValue)) as { exp?: number; uid?: string; name?: string; role?: string };
+    if (!payload.exp || Date.now() > payload.exp || !payload.uid || !payload.name || (payload.role !== "administrador" && payload.role !== "empleado")) return null;
+    return { id: payload.uid, nombre: payload.name, rol: payload.role };
+  } catch { return null; }
+}
 
-  return safeEquals(signature, expectedSignature);
+export function getSessionCookieFromRequest(request: Request) {
+  const header = request.headers.get("cookie") || "";
+  const prefix = `${SESSION_COOKIE_NAME}=`;
+  const item = header.split(";").map((value) => value.trim()).find((value) => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : undefined;
+}
+
+export async function getRequestUser(request: Request) {
+  return getSessionFromToken(getSessionCookieFromRequest(request));
+}
+
+function encodeText(value: string) {
+  return encodeBase64Url(new TextEncoder().encode(value).buffer);
+}
+
+function decodeText(value: string) {
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
+  return new TextDecoder().decode(Uint8Array.from(atob(normalized + "=".repeat((4 - normalized.length % 4) % 4)), (character) => character.charCodeAt(0)));
 }
 
 export function getSessionCookieOptions() {
@@ -116,4 +139,3 @@ export function getSessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
   };
 }
-

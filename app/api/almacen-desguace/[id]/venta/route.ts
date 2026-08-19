@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/auth";
+import { resolveActionActor } from "@/lib/action-actor";
+import { getWarehouseSettings } from "@/lib/app-settings-server";
 import { getAuditHistory, recordAuditEvents } from "@/lib/almacen-desguace-auditoria";
 import { getPieza } from "@/lib/almacen-desguace-data";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { EstadoProceso, EventoAlmacen, PiezaDesguace } from "@/types/almacen-desguace";
 
@@ -53,7 +56,11 @@ export async function POST(request: Request, context: Context) {
     if (piece.estado_proceso === "Retirada") return NextResponse.json({ error: "Una pieza retirada no se puede vender sin devolverla antes al almacén." }, { status: 409 });
 
     const body = await request.json() as Record<string, unknown>;
-    const employee = String(body.empleado || "").trim();
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanRegisterSales) return NextResponse.json({ error: "Un administrador ha desactivado el registro de ventas para empleados." }, { status: 403 });
+    const actor = await resolveActionActor(request, body.actor_user_id);
+    if (!actor) return NextResponse.json({ error: "Selecciona el empleado que realiza la venta." }, { status: 400 });
+    const employee = actor.nombre.trim();
     const notes = String(body.observaciones || "").trim();
     const paymentMethod = String(body.forma_pago || "No indicada").trim();
     const price = Number(body.precio_final);
@@ -116,7 +123,7 @@ export async function POST(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:undo-sale", limit: 30, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:undo-sale", limit: 30, windowMs: 60_000 });
   if (guard) return guard;
 
   try {

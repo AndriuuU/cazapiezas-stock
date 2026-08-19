@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getIamPieceByCode, getRecambioFacilConfig, RecambioFacilRequestError } from "@/lib/recambio-facil-api";
 import { mapIamApiRecord, mapIamCsvRecord, parseIamCsv, type IamImportRecord } from "@/lib/iam-import";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -52,7 +52,7 @@ function preview(records: IamImportRecord[]) {
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:iam-import", limit: 20, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:iam-import", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const contentType = request.headers.get("content-type") || "";

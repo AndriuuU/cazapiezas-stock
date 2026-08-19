@@ -6,18 +6,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Archive, History, Layers3, LayoutDashboard, MapPinned, ScanBarcode, Warehouse } from "lucide-react";
 import MobileQuickActions from "@/components/almacen-desguace/MobileQuickActions";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 
 const navigation = [
   { href: "/almacen-desguace", label: "Almacén", icon: Warehouse, exact: true },
   { href: "/almacen-desguace/plano", label: "Plano", icon: MapPinned },
   { href: "/almacen-desguace/cajones", label: "Cajones", icon: Archive },
-  { href: "/almacen-desguace/estanterias", label: "Estanterías", icon: Layers3 },
+  { href: "/almacen-desguace/estanterias", label: "Estanterías", icon: Layers3, adminOnly: true },
   { href: "/almacen-desguace/resumen", label: "Resumen", icon: LayoutDashboard },
   { href: "/almacen-desguace/historial", label: "Historial", icon: History },
 ];
 
 export default function DesktopWarehouseNav() {
   const pathname = usePathname();
+  const currentUser = useCurrentUser();
   const [quickOpen, setQuickOpen] = useState(false);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function DesktopWarehouseNav() {
       >
         <div className="mx-auto max-w-[1500px] overflow-x-auto px-4 sm:px-6">
           <div className="flex min-w-max items-center gap-2 py-2.5">
-            {navigation.map(({ href, label, icon: Icon, exact }) => {
+            {navigation.filter((item) => !item.adminOnly || currentUser?.rol === "administrador").map(({ href, label, icon: Icon, exact }) => {
               const active = exact ? pathname === href : pathname.startsWith(href);
 
               return (

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getAuditHistory, recordAuditEvents } from "@/lib/almacen-desguace-auditoria";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
 
 type Context = { params: Promise<{ eventId: string }> };
 
 export async function POST(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:trash-restore", limit: 15, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:trash-restore", limit: 15, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const { eventId } = await context.params;

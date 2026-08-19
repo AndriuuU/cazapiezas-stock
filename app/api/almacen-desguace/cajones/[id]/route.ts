@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDrawer } from "@/lib/almacen-desguace-cajones";
 import { UBICACION_PATTERN } from "@/lib/almacen-desguace";
 import { getLocationParts, getShelves } from "@/lib/almacen-desguace-estanterias";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 type Context = { params: Promise<{ id: string }> };
@@ -17,7 +17,7 @@ export async function GET(request: Request, context: Context) {
 }
 
 export async function PATCH(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:drawer-update", limit: 60, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:drawer-update", limit: 60, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const source = await request.json() as Record<string, unknown>;
@@ -53,7 +53,7 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:drawer-delete", limit: 20, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:drawer-delete", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const { id } = await context.params;

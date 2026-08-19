@@ -12,7 +12,7 @@ import {
   validateCatPiece,
   type CatRemotePiece,
 } from "@/lib/recambio-facil-api";
-import { protectApiOrPostmanRequest } from "@/lib/request-security";
+import { protectAdminApiOrPostmanRequest, protectApiOrPostmanRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace, PiezaDesguaceInput } from "@/types/almacen-desguace";
 
@@ -209,7 +209,7 @@ export async function GET(request: Request, context: Context) {
 }
 
 export async function PUT(request: Request, context: Context) {
-  const guard = await protectApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-update", limit: 20, windowMs: 60_000 });
+  const guard = await protectAdminApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-update", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
 
   let piece: PiezaDesguace | null = null;
@@ -291,7 +291,7 @@ export async function PUT(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  const guard = await protectApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-delete", limit: 10, windowMs: 60_000 });
+  const guard = await protectAdminApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-delete", limit: 10, windowMs: 60_000 });
   if (guard) return guard;
 
   let piece: PiezaDesguace | null = null;

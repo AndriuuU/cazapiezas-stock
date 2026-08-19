@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/auth";
+import { getWarehouseSettings } from "@/lib/app-settings-server";
 import { UBICACION_PATTERN } from "@/lib/almacen-desguace";
 import { getPieza } from "@/lib/almacen-desguace-data";
 import { protectApiRequest } from "@/lib/request-security";
@@ -11,6 +13,8 @@ export async function PATCH(request: Request, context: Context) {
   const guard = await protectApiRequest(request, { keyPrefix: "desguace:drawer-pieces", limit: 100, windowMs: 60_000 });
   if (guard) return guard;
   try {
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanManageDrawerContents) return NextResponse.json({ error: "Un administrador ha desactivado los movimientos de piezas en cajones para empleados." }, { status: 403 });
     const { id } = await context.params;
     const body = await request.json() as { action?: string; pieza_id?: number; ubicacion_destino?: string };
     const piece = await getPieza(Number(body.pieza_id));

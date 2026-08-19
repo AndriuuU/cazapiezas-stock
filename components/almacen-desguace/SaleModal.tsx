@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, CircleDollarSign, Loader2, Plus, Settings2, ShoppingBag, Trash2, UserRound, X } from "lucide-react";
+import { CalendarDays, CircleDollarSign, Loader2, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
+import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
 
 function localDateTimeNow() {
   const date = new Date();
@@ -21,9 +23,12 @@ export default function SaleModal({
   onClose: () => void;
   onSold: (message: string) => void;
 }) {
+  const currentUser = useCurrentUser();
+  const { users: actionUsers, loading: actionUsersLoading } = useActionActors(currentUser);
+  const [actorUserId, setActorUserId] = useState("");
   const [date, setDate] = useState(localDateTimeNow);
   const [employee, setEmployee] = useState("Andrés");
-  const [employees, setEmployees] = useState<string[]>(FALLBACK_EMPLOYEES);
+  const [, setEmployees] = useState<string[]>(FALLBACK_EMPLOYEES);
   const [employeeDraft, setEmployeeDraft] = useState<string[]>(FALLBACK_EMPLOYEES);
   const [newEmployee, setNewEmployee] = useState("");
   const [managingEmployees, setManagingEmployees] = useState(false);
@@ -101,7 +106,8 @@ export default function SaleModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fecha_venta: new Date(date).toISOString(),
-          empleado: employee,
+          empleado: currentUser?.nombre || employee,
+          actor_user_id: actorUserId,
           precio_final: Number(price),
           forma_pago: paymentMethod,
           observaciones: notes,
@@ -146,16 +152,7 @@ export default function SaleModal({
             </label>
           </div>
 
-          <label className="block text-sm font-bold text-zinc-300">
-            <span className="mb-2 flex items-center gap-2"><UserRound size={17} className="text-amber-300" /> Empleado</span>
-            <div className="flex gap-2">
-              <select required disabled={employeesLoading} value={employee} onChange={(event) => setEmployee(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-white outline-none focus:border-amber-500 disabled:opacity-50">
-                <option value="">{employeesLoading ? "Cargando empleados…" : "Selecciona un empleado"}</option>
-                {employees.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-              <button type="button" onClick={() => { setEmployeeDraft(employees); setManagingEmployees((current) => !current); setError(""); }} className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-3 text-zinc-300 hover:border-amber-500/50 hover:text-amber-300" title="Añadir o quitar empleados"><Settings2 size={18} /><span className="hidden sm:inline">Gestionar</span></button>
-            </div>
-          </label>
+          <ActionActorSelect currentUser={currentUser} users={actionUsers} loading={actionUsersLoading} value={actorUserId} onChange={(id) => { setActorUserId(id); setError(""); }} label="Empleado que realiza la venta" />
 
           {managingEmployees && <section className="flex max-h-[min(32rem,calc(100dvh-8rem))] flex-col overflow-hidden rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
             <div className="mb-3 flex shrink-0 items-start justify-between gap-3"><div><h3 className="font-black text-white">Empleados activos</h3><p className="mt-1 text-xs text-zinc-500">Los que quites no aparecerán en ventas nuevas. Sus ventas anteriores se conservarán.</p></div><button type="button" disabled={employeesSaving} onClick={() => setManagingEmployees(false)} aria-label="Cerrar gestión de empleados" className="shrink-0 rounded-lg border border-zinc-700 p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white disabled:opacity-40"><X size={18} /></button></div>
@@ -182,7 +179,7 @@ export default function SaleModal({
 
         <footer className="flex shrink-0 gap-2 border-t border-zinc-800 bg-zinc-900/95 p-3 sm:justify-end sm:p-4">
           <button type="button" disabled={saving} onClick={onClose} className="min-w-0 flex-1 rounded-xl border border-zinc-700 px-3 py-3 font-bold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 sm:flex-none sm:px-4 sm:py-2.5">Cancelar</button>
-          <button type="submit" disabled={saving || employeesLoading || managingEmployees} className="inline-flex min-w-0 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-3 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50 sm:flex-none sm:px-5 sm:py-2.5">{saving ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBag size={18} />} Confirmar venta</button>
+          <button type="submit" disabled={saving || employeesLoading || actionUsersLoading || managingEmployees || (currentUser?.rol === "administrador" && !actorUserId)} className="inline-flex min-w-0 flex-[1.6] items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-3 font-black text-zinc-950 hover:bg-emerald-400 disabled:opacity-50 sm:flex-none sm:px-5 sm:py-2.5">{saving ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBag size={18} />} Confirmar venta</button>
         </footer>
       </form>
       <div aria-hidden="true" className="w-full shrink-0 sm:hidden" style={{ height: "calc(4.25rem + env(safe-area-inset-bottom))" }} />

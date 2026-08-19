@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/auth";
 import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
 import { getPieza, withPublicPhotos } from "@/lib/almacen-desguace-data";
 import { protectApiRequest } from "@/lib/request-security";
@@ -35,6 +36,8 @@ export async function PATCH(request: Request, context: Context) {
     const current = await getPieza(id);
     if (!current) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
     const raw = await request.json() as Record<string, unknown>;
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && raw.action !== "reservar" && raw.action !== "enviar") return NextResponse.json({ error: "Solo un administrador puede editar o retirar piezas." }, { status: 403 });
     if (raw.action === "publicar") return NextResponse.json({ error: "Usa la publicación de Recambio Fácil para marcar una pieza como Online." }, { status: 400 });
     const normalized = normalizePiezaInput(raw);
     if (raw.action === "vender" || normalized.estado_proceso === "Vendida") return NextResponse.json({ error: "Usa Registrar venta para indicar fecha, empleado y precio final." }, { status: 400 });

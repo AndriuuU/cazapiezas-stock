@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getShelves } from "@/lib/almacen-desguace-estanterias";
 import { normalizeShelf, validateShelf } from "@/lib/almacen-desguace-estanterias-input";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:shelves-create", limit: 30, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:shelves-create", limit: 30, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const shelf = normalizeShelf(await request.json());

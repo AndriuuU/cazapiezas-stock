@@ -9,8 +9,16 @@ export function getSupabaseApiConfig() {
 export function supabaseHeaders(key: string, extra?: Record<string, string>) {
   return {
     apikey: key,
-    Authorization: `Bearer ${key}`,
+    ...(!key.startsWith("sb_secret_") && { Authorization: `Bearer ${key}` }),
     "Content-Type": "application/json",
+    ...extra,
+  };
+}
+
+export function supabaseStorageHeaders(key: string, extra?: Record<string, string>) {
+  return {
+    apikey: key,
+    ...(!key.startsWith("sb_secret_") && { Authorization: `Bearer ${key}` }),
     ...extra,
   };
 }

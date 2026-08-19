@@ -7,9 +7,12 @@ import { usePathname } from "next/navigation";
 import { Archive, ChevronLeft, FileSpreadsheet, History, LayoutDashboard, MapPinned, MoreHorizontal, PackagePlus, PackageX, ScanBarcode, ShoppingBag, Warehouse, X } from "lucide-react";
 import VersionBadge from "@/components/almacen-desguace/VersionBadge";
 import MobileQuickActions from "@/components/almacen-desguace/MobileQuickActions";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 
 export default function MobileWarehouseNav() {
   const pathname = usePathname();
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.rol === "administrador";
   const [open, setOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
 
@@ -33,12 +36,12 @@ export default function MobileWarehouseNav() {
         </div>
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace/nueva" className="warehouse-mobile-menu-option border-amber-500/40 bg-amber-500/10 text-amber-300"><PackagePlus size={21} /><span>Nueva pieza</span></Link>
-          <Link onClick={() => setOpen(false)} href="/almacen-desguace/importar-iam" className="warehouse-mobile-menu-option border-violet-500/40 bg-violet-500/10 text-violet-300"><FileSpreadsheet size={21} /><span>Importar IAM</span></Link>
+          {isAdmin && <Link onClick={() => setOpen(false)} href="/almacen-desguace/importar-iam" className="warehouse-mobile-menu-option border-violet-500/40 bg-violet-500/10 text-violet-300"><FileSpreadsheet size={21} /><span>Importar IAM</span></Link>}
           <Link onClick={() => setOpen(false)} href="/almacen-desguace/resumen" className={`warehouse-mobile-menu-option ${pathname.includes("/resumen") ? "border-amber-500/60 bg-amber-500/10 text-amber-300" : "border-zinc-700 bg-black text-zinc-200"}`}><LayoutDashboard size={21} /><span>Resumen</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace?view=vendidas" className="warehouse-mobile-menu-option border-zinc-700 bg-black text-zinc-200"><ShoppingBag size={21} /><span>Vendidas</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace?view=retiradas" className="warehouse-mobile-menu-option border-zinc-700 bg-black text-zinc-200"><PackageX size={21} /><span>Retiradas</span></Link>
           <Link onClick={() => setOpen(false)} href="/almacen-desguace/historial" className={`warehouse-mobile-menu-option ${pathname.includes("/historial") ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300" : "border-zinc-700 bg-black text-zinc-200"}`}><History size={21} /><span>Historial</span></Link>
-          <Link onClick={() => setOpen(false)} href="/almacen-desguace/estanterias" className={`warehouse-mobile-menu-option ${pathname.includes("/estanterias") ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300" : "border-zinc-700 bg-black text-zinc-200"}`}><Warehouse size={21} /><span>Estanterías</span></Link>
+          {isAdmin && <Link onClick={() => setOpen(false)} href="/almacen-desguace/estanterias" className={`warehouse-mobile-menu-option ${pathname.includes("/estanterias") ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-300" : "border-zinc-700 bg-black text-zinc-200"}`}><Warehouse size={21} /><span>Estanterías</span></Link>}
           <Link onClick={() => setOpen(false)} href="/" className="warehouse-mobile-menu-option border-zinc-700 bg-black text-zinc-200" style={{ gridColumn: "1 / -1" }}><ChevronLeft size={21} /><span>Volver a Stock tienda</span></Link>
         </div>
       </section>

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/auth";
+import { getWarehouseSettings } from "@/lib/app-settings-server";
 import { getPhotoCount, getPieza } from "@/lib/almacen-desguace-data";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { PHOTO_UPLOAD_MAX_BYTES } from "@/lib/photo-upload";
-import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
+import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders, supabaseStorageHeaders } from "@/lib/supabase-rest";
 import type { FotoDesguace } from "@/types/almacen-desguace";
 
 type Context = { params: Promise<{ id: string }> };
@@ -15,7 +17,9 @@ export async function POST(request: Request, context: Context) {
     const { id } = await context.params;
     if (!(await getPieza(id))) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
     const contentType = request.headers.get("content-type") || "";
+    const signedUser = await getRequestUser(request);
     if (contentType.includes("application/json")) {
+      if (signedUser?.rol !== "administrador") return NextResponse.json({ error: "Solo un administrador puede importar fotografías externas." }, { status: 403 });
       const body = await request.json() as { urls?: unknown };
       const urls = Array.isArray(body.urls)
         ? [...new Set(body.urls.map(String).map((value) => value.trim()).filter(isRemoteImageUrl))].slice(0, 20)
@@ -36,6 +40,7 @@ export async function POST(request: Request, context: Context) {
       }
       return NextResponse.json(created, { status: 201 });
     }
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanUploadPhotos) return NextResponse.json({ error: "Un administrador ha desactivado la subida de fotos para empleados." }, { status: 403 });
     let files: File[];
     if (contentType.startsWith("image/")) {
       const declaredSize = Number(request.headers.get("content-length") || 0);
@@ -69,7 +74,7 @@ export async function POST(request: Request, context: Context) {
       const encoded = path.split("/").map(encodeURIComponent).join("/");
       const upload = await fetch(`${url}/storage/v1/object/${BUCKET}/${encoded}`, {
         method: "POST",
-        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": file.type, "x-upsert": "false" },
+        headers: supabaseStorageHeaders(key, { "Content-Type": file.type, "x-upsert": "false" }),
         body: await file.arrayBuffer(),
       });
       if (!upload.ok) throw new Error((await upload.json().catch(() => null))?.message || "No se pudo subir la foto.");
@@ -107,6 +112,8 @@ export async function PATCH(request: Request, context: Context) {
   if (guard) return guard;
   try {
     const { id } = await context.params;
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanChooseMainPhoto) return NextResponse.json({ error: "Solo un administrador puede cambiar la foto principal." }, { status: 403 });
     const body = await request.json() as { foto_id?: number; es_principal?: boolean; orden?: number };
     if (!body.foto_id) return NextResponse.json({ error: "Falta la fotografía." }, { status: 400 });
     const { url, key } = getSupabaseApiConfig();
@@ -130,7 +137,7 @@ export async function PATCH(request: Request, context: Context) {
 }
 
 export async function DELETE(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:photos-delete", limit: 30, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:photos-delete", limit: 30, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const { id } = await context.params;
@@ -147,7 +154,7 @@ export async function DELETE(request: Request, context: Context) {
     if (!deleted.ok) throw new Error("No se pudo eliminar el registro de la foto.");
     if (!/^https?:\/\//i.test(photo.url_imagen)) {
       const encoded = photo.url_imagen.split("/").map(encodeURIComponent).join("/");
-      await fetch(`${url}/storage/v1/object/${BUCKET}/${encoded}`, { method: "DELETE", headers: { apikey: key, Authorization: `Bearer ${key}` } });
+      await fetch(`${url}/storage/v1/object/${BUCKET}/${encoded}`, { method: "DELETE", headers: supabaseStorageHeaders(key) });
     }
     if (photo.es_principal) {
       const remaining = await getPieza(id);

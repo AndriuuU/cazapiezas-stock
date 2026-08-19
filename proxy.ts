@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getSessionCookieOptions,
+  getSessionFromToken,
   sessionCookieName,
-  verifySessionToken,
 } from "@/lib/auth";
 import { isIpAllowed } from "@/lib/request-security";
 
@@ -35,9 +35,9 @@ export async function proxy(request: NextRequest) {
   }
 
   const token = request.cookies.get(sessionCookieName)?.value;
-  const isAuthenticated = await verifySessionToken(token);
+  const user = await getSessionFromToken(token);
 
-  if (!isAuthenticated) {
+  if (!user) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json(
         { error: "Inicia sesion para continuar." },
@@ -46,6 +46,18 @@ export async function proxy(request: NextRequest) {
     }
 
     return redirectToLogin(request);
+  }
+
+  if (pathname.startsWith("/admin") && user.rol !== "administrador") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  const warehouseAdminPage = pathname === "/almacen-desguace/importar-iam"
+    || pathname === "/almacen-desguace/papelera"
+    || pathname === "/almacen-desguace/estanterias"
+    || /^\/almacen-desguace\/\d+\/editar$/.test(pathname);
+  if (warehouseAdminPage && user.rol !== "administrador") {
+    return NextResponse.redirect(new URL("/almacen-desguace", request.url));
   }
 
   const response = NextResponse.next();
@@ -58,5 +70,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/admin/:path*", "/almacen-desguace/:path*", "/api/:path*"],
+  matcher: ["/", "/mi-cuenta", "/admin/:path*", "/almacen-desguace/:path*", "/herramientas-comunes/:path*", "/api/:path*"],
 };

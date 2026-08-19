@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import axios from "axios";
 import {
@@ -19,6 +19,8 @@ import {
 } from "@/services/cache";
 import { Material } from "@/types/material";
 import QuantityPanel from "./QuantityPanel";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
+import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
 
 interface ProductCardProps {
   material: Material;
@@ -27,6 +29,8 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ material, onClose, onSaved }: ProductCardProps) {
+  const currentUser = useCurrentUser();
+  const { users: actionUsers, loading: actionUsersLoading } = useActionActors(currentUser);
   const [editedQuantity, setEditedQuantity] = useState(material.quantity);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -34,41 +38,11 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
   const [imageUrl, setImageUrl] = useState(material.photos?.[0]?.url || "");
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState("");
-  const [employees, setEmployees] = useState<string[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [actorUserId, setActorUserId] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
 
   const quantityDifference = editedQuantity - material.quantity;
   const hasChanged = quantityDifference !== 0;
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchEmployees = async () => {
-      try {
-        const response = await axios.get("/api/employees");
-        const nextEmployees = Array.isArray(response.data.employees)
-          ? response.data.employees
-          : [];
-
-        if (!isMounted) {
-          return;
-        }
-
-        setEmployees(nextEmployees);
-      } catch {
-        if (isMounted) {
-          setEmployees(["Empleado"]);
-        }
-      }
-    };
-
-    void fetchEmployees();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const handleSaveAndClose = async () => {
     if (!hasChanged) {
@@ -76,8 +50,8 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
       return;
     }
 
-    if (!selectedEmployee) {
-      setSaveError("Selecciona quién ha cogido el material.");
+    if (currentUser?.rol === "administrador" && !actorUserId) {
+      setSaveError("Selecciona quién ha cogido o cambiado el material.");
       return;
     }
 
@@ -91,11 +65,12 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
         name: material.name,
         quantity_before: material.quantity,
         quantity_after: editedQuantity,
-        employee_name: selectedEmployee,
+        actor_user_id: actorUserId,
       });
 
       updateMaterialQuantityInCache(material.material_id, editedQuantity);
-      const message = `Stock guardado en TallerGP por ${selectedEmployee}`;
+      const actorName = currentUser?.rol === "administrador" ? actionUsers.find((user) => user.id === actorUserId)?.nombre : currentUser?.nombre;
+      const message = `Stock guardado en TallerGP por ${actorName || "el usuario conectado"}`;
       setSaveSuccess(message);
       onSaved?.(message);
       window.setTimeout(onClose, 650);
@@ -207,26 +182,7 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
             onQuantityChange={setEditedQuantity}
           />
 
-          <label className="block bg-zinc-900/50 rounded-xl p-4 border border-zinc-700">
-            <span className="block text-sm font-medium text-zinc-300 mb-2">
-              Quién lo ha cogido
-            </span>
-            <select
-              value={selectedEmployee}
-              onChange={(event) => {
-                setSelectedEmployee(event.target.value);
-                setSaveError("");
-              }}
-              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none focus:border-red-500"
-            >
-              <option value="">Empleados</option>
-              {employees.map((employee) => (
-                <option key={employee} value={employee}>
-                  {employee}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 p-4"><ActionActorSelect currentUser={currentUser} users={actionUsers} loading={actionUsersLoading} value={actorUserId} onChange={(id) => { setActorUserId(id); setSaveError(""); }} label="Quién ha cogido o cambiado el material" /></div>
 
           {saveError && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
