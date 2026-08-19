@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Box, Check, Crosshair, Edit3, Layers3, MapPin, Maximize2, Plus, RotateCw, Save, Trash2, Warehouse, X } from "lucide-react";
 import type { ElementoPlanoAlmacen, EstanteriaPlanoAlmacen } from "@/types/almacen-desguace";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 
 type DefaultShelf = Omit<ElementoPlanoAlmacen, "id" | "tipo" | "nombre" | "color" | "orden"> & { physicalLabel: string };
 
@@ -51,6 +52,8 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
   focusedShelf?: string;
   focusedLocation?: string;
 }) {
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.rol === "administrador";
   const startingLayout = useMemo(() => initialLayout.length ? cloneLayout(initialLayout) : defaultLayout(), [initialLayout]);
   const [elements, setElements] = useState<ElementoPlanoAlmacen[]>(startingLayout);
   const savedLayout = useRef<ElementoPlanoAlmacen[]>(cloneLayout(startingLayout));
@@ -222,7 +225,7 @@ export default function RealisticWarehousePlan({ shelves, initialLayout, visible
           <p className="mt-1 text-sm text-zinc-500">Vista superior basada en el croquis real.</p>
         </div>
         {!editing
-          ? <button onClick={beginEditing} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-black text-amber-200"><Edit3 size={17} /> Editar plano</button>
+          ? isAdmin && <button onClick={beginEditing} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-black text-amber-200"><Edit3 size={17} /> Editar plano</button>
           : <div className="flex gap-2"><button onClick={cancelEditing} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-3 py-2 text-sm font-bold text-zinc-300"><X size={16} /> Cancelar</button><button onClick={saveLayout} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-black text-zinc-950 disabled:opacity-50"><Save size={16} /> {saving ? "Guardando..." : "Guardar"}</button></div>}
       </div>
       {editing && <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-100/80"><strong>Modo edición:</strong> arrastra los elementos en el dibujo. Cambiar el plano no mueve ni elimina piezas, cajones o ubicaciones.</div>}

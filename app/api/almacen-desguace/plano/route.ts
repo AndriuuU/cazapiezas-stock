@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, supabaseHeaders } from "@/lib/supabase-rest";
 
 type PlanoInput = {
@@ -55,7 +55,7 @@ function validateElements(elements: PlanoInput[]) {
 }
 
 export async function PUT(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:warehouse-layout", limit: 30, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:warehouse-layout", limit: 30, windowMs: 60_000 });
   if (guard) return guard;
 
   try {

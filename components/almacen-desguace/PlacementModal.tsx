@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Loader2, MapPin, RefreshCw, X } from "lucide-react";
 import AvailableLocationPicker, { type FreeWarehouseLocation } from "@/components/almacen-desguace/AvailableLocationPicker";
+import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 import type { EstanteriaDesguace, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
 
 type SuggestionResponse = {
@@ -15,6 +17,9 @@ type SuggestionResponse = {
 type Mode = "suggestion" | "alternative" | "failed";
 
 export default function PlacementModal({ piece, onClose, onPlaced }: { piece: PiezaDesguace; onClose: () => void; onPlaced: (message: string) => void }) {
+  const currentUser = useCurrentUser();
+  const actionActors = useActionActors(currentUser);
+  const [actorUserId, setActorUserId] = useState("");
   const [data, setData] = useState<SuggestionResponse | null>(null);
   const [mode, setMode] = useState<Mode>("suggestion");
   const [alternative, setAlternative] = useState("");
@@ -46,6 +51,10 @@ export default function PlacementModal({ piece, onClose, onPlaced }: { piece: Pi
   }, [load]);
 
   async function confirm(result: "colocada_sugerida" | "colocada_alternativa" | "no_colocada") {
+    if (currentUser?.rol === "administrador" && !actorUserId) {
+      setError("Selecciona el empleado que coloca la pieza.");
+      return;
+    }
     setSaving(true); setError("");
     try {
       const response = await fetch(`/api/almacen-desguace/${piece.id}/ubicar`, {
@@ -55,6 +64,7 @@ export default function PlacementModal({ piece, onClose, onPlaced }: { piece: Pi
           ubicacion_sugerida: data?.suggestion?.ubicacion || null,
           ubicacion_final: result === "colocada_alternativa" ? alternative : null,
           motivo: reason,
+          actor_user_id: actorUserId,
         }),
       });
       const body = await response.json();
@@ -71,6 +81,7 @@ export default function PlacementModal({ piece, onClose, onPlaced }: { piece: Pi
   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-4 backdrop-blur-sm md:items-center"><div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 p-4"><div><p className="font-mono text-xs font-bold text-amber-300">{piece.codigo_interno}</p><h2 className="text-xl font-bold text-white">Colocar {piece.nombre_pieza || "pieza"}</h2></div><button onClick={onClose} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800"><X /></button></div><div className="space-y-4 p-5">
     {loading ? <div className="flex justify-center gap-2 py-12 text-zinc-400"><Loader2 className="animate-spin" /> Buscando el mejor hueco...</div> : <>
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+      <ActionActorSelect currentUser={currentUser} users={actionActors.users} loading={actionActors.loading} value={actorUserId} onChange={setActorUserId} label="Quién coloca la pieza" />
       {data?.suggestion ? <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5"><p className="text-xs font-bold uppercase tracking-wide text-emerald-300">Ubicación recomendada</p><div className="mt-2 flex items-start gap-3"><MapPin className="mt-1 text-emerald-400" /><div><p className="font-mono text-2xl font-black text-white">{data.suggestion.ubicacion}</p><p className="font-semibold text-emerald-100">{data.suggestion.estanteria.nombre}</p><div className="mt-2 flex flex-wrap gap-1">{data.suggestion.motivos.map((item) => <span key={item} className="rounded bg-black/20 px-2 py-1 text-xs text-emerald-200">{item}</span>)}</div><p className="mt-3 text-xs text-emerald-200/70">Quedan {data.suggestion.estanteria.disponibles} huecos antes de colocar esta pieza.</p></div></div></section> : <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><div className="flex gap-3"><AlertTriangle className="shrink-0 text-amber-400" /><div><p className="font-bold text-amber-200">No hay una regla que recomiende un hueco</p><p className="mt-1 text-sm text-amber-200/70">Puedes elegir visualmente cualquiera de los huecos libres de las estanterías configuradas.</p><Link href="/almacen-desguace/estanterias" className="mt-3 inline-block text-sm font-bold text-amber-300 underline">Gestionar estanterías</Link></div></div></section>}
 
       {mode === "suggestion" && <div className="grid gap-2 sm:grid-cols-3">{data?.suggestion && <button disabled={saving} onClick={() => void confirm("colocada_sugerida")} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 font-bold text-zinc-950"><CheckCircle2 size={18} /> Sí, colocada ahí</button>}<button onClick={() => { setAlternative(""); setMode("alternative"); }} className="rounded-xl border border-amber-500/30 px-4 py-3 font-semibold text-amber-300">{data?.suggestion ? "Elegir otro hueco" : "Elegir hueco disponible"}</button><button onClick={() => setMode("failed")} className="rounded-xl border border-red-500/30 px-4 py-3 font-semibold text-red-300">No pude colocarla</button></div>}

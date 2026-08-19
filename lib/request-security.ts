@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getRequestUser,
   sessionCookieName,
   verifySessionToken,
 } from "@/lib/auth";
@@ -155,6 +156,14 @@ export async function protectApiRequest(
   return undefined;
 }
 
+export async function protectAdminApiRequest(request: Request, rateLimitOptions?: RateLimitOptions) {
+  const guard = await protectApiRequest(request, rateLimitOptions);
+  if (guard) return guard;
+  const user = await getRequestUser(request);
+  if (user?.rol !== "administrador") return securityError("Esta acción necesita permisos de administrador.", 403);
+  return undefined;
+}
+
 export async function protectApiOrPostmanRequest(
   request: Request,
   rateLimitOptions?: RateLimitOptions
@@ -170,6 +179,11 @@ export async function protectApiOrPostmanRequest(
     );
   }
   return undefined;
+}
+
+export async function protectAdminApiOrPostmanRequest(request: Request, rateLimitOptions?: RateLimitOptions) {
+  if (hasValidPostmanToken(request)) return protectApiOrPostmanRequest(request, rateLimitOptions);
+  return protectAdminApiRequest(request, rateLimitOptions);
 }
 
 export function protectPublicAuthRequest(

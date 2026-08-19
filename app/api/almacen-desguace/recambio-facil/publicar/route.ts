@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { recordAuditEventsSafely } from "@/lib/almacen-desguace-auditoria";
 import { withPublicPhotos } from "@/lib/almacen-desguace-data";
 import { buildCatPayload, getRecambioFacilConfig, insertCatPiecesBatch, validateCatPiece, type CatBatchItemResponse } from "@/lib/recambio-facil-api";
-import { protectApiOrPostmanRequest } from "@/lib/request-security";
+import { protectAdminApiOrPostmanRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace } from "@/types/almacen-desguace";
 
@@ -32,7 +32,7 @@ async function markOnline(pieces: PiezaDesguace[], url: string, key: string, con
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-publish", limit: 20, windowMs: 60_000 });
+  const guard = await protectAdminApiOrPostmanRequest(request, { keyPrefix: "desguace:rf-publish", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
 
   let auditPieces: PiezaDesguace[] = [];

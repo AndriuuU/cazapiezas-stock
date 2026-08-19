@@ -11,6 +11,7 @@ import LocationField from "@/components/almacen-desguace/LocationField";
 import { RECAMBIO_FACIL_REFERENCE_MIN_LENGTH, validateRecambioFacilRequiredFields } from "@/lib/recambio-facil-rules";
 import { PHOTO_SOURCE_MAX_BYTES } from "@/lib/photo-upload";
 import { optimizePhoto, uploadPiecePhoto } from "@/lib/photo-upload-client";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 
 type PublicationResponse = {
   published?: Array<{ id: number }>;
@@ -38,6 +39,8 @@ const fields = [
 
 export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
   const router = useRouter();
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.rol === "administrador";
   const formRef = useRef<HTMLFormElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const submitModeRef = useRef<"save" | "save-and-publish">("save");
@@ -187,7 +190,10 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
   const referenceLength = principalReference.trim().length;
   const referenceInvalid = referenceLength > 0 && referenceLength < RECAMBIO_FACIL_REFERENCE_MIN_LENGTH;
   const importedOnline = Boolean(importedPiece?.publicado_online);
-  const showPublishButton = !pieza && !importedOnline;
+  const showPublishButton = isAdmin && !pieza && !importedOnline;
+  const visibleProcessStates = currentUser?.rol === "empleado"
+    ? ESTADOS_PROCESO.filter((state) => ["Pendiente de identificar", "Pendiente de comprobar", "Pendiente de fotografiar", "Lista para publicar"].includes(state))
+    : ESTADOS_PROCESO;
 
   function requestPublicationConfirmation() {
     const currentForm = formRef.current;
@@ -205,7 +211,7 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
   return (
     <form key={formVersion} ref={formRef} onSubmit={submit} className="space-y-6 pb-24">
       <Link href="/almacen-desguace" className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-bold text-zinc-300 hover:border-amber-500/40 hover:text-amber-300"><ArrowLeft size={17} /> Volver a Almacén Desguace</Link>
-      {!pieza && <section className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 sm:p-5">
+      {!pieza && isAdmin && <section className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-4 sm:p-5">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-violet-500/15 p-2.5 text-violet-300"><CloudDownload size={22} /></span><div><h2 className="font-black text-white">Importar desde Recambio Fácil</h2><p className="mt-1 text-sm text-zinc-400">Escribe el identificador que utiliza R/F, por ejemplo <span className="font-mono font-bold text-amber-300">scaf5z</span>. Encontraremos la pieza y rellenaremos el formulario.</p></div></div>
         <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
           <input value={importCode} onChange={(event) => setImportCode(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void importFromRecambioFacil(); } }} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="Identificador de R/F" aria-label="Identificador de Recambio Fácil" className="min-h-12 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-4 font-mono text-white placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none" />
@@ -231,7 +237,7 @@ export default function PieceForm({ pieza }: { pieza?: PiezaDesguace }) {
         <h2 className="mb-4 text-lg font-bold text-white">Estado, cantidades y ubicación</h2>
         <div className="grid min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Field label="Estado de la pieza"><select name="estado_pieza" defaultValue={String(value("estado_pieza"))} className={inputClass}><option value="">Sin completar</option>{ESTADOS_PIEZA.map(v => <option key={v}>{v}</option>)}</select></Field>
-          <Field label="Estado del proceso"><select name="estado_proceso" disabled={pieza?.estado_proceso === "Vendida"} defaultValue={String(value("estado_proceso") || "Pendiente de identificar")} className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}>{ESTADOS_PROCESO.filter((v) => v !== "Vendida" || pieza?.estado_proceso === "Vendida").map(v => <option key={v} value={v}>{v === "Publicada" ? "Publicada (ya existe en R/F)" : v}</option>)}</select>{pieza?.estado_proceso === "Vendida" && <p className="mt-1 text-xs text-amber-300">Para recuperarla usa “Deshacer venta” desde la pestaña Vendidas.</p>}</Field>
+          <Field label="Estado del proceso"><select name="estado_proceso" disabled={pieza?.estado_proceso === "Vendida"} defaultValue={String(value("estado_proceso") || "Pendiente de identificar")} className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}>{visibleProcessStates.filter((v) => v !== "Vendida" || pieza?.estado_proceso === "Vendida").map(v => <option key={v} value={v}>{v === "Publicada" ? "Publicada (ya existe en R/F)" : v}</option>)}</select>{pieza?.estado_proceso === "Vendida" && <p className="mt-1 text-xs text-amber-300">Para recuperarla usa “Deshacer venta” desde la pestaña Vendidas.</p>}</Field>
           <Field label="Cantidad"><input name="cantidad" type="number" min="0" step="1" defaultValue={String(value("cantidad"))} className={inputClass} /></Field>
           <LocationField initialValue={pieza?.ubicacion} initialDrawerId={pieza?.cajon_id} initialDrawer={pieza?.cajon} formRef={formRef} />
           <Field label="Precio de coste"><input name="precio_coste" type="number" min="0" step="0.01" defaultValue={String(value("precio_coste"))} className={inputClass} /></Field>

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { normalizeShelf, validateShelf } from "@/lib/almacen-desguace-estanterias-input";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, context: Context) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:shelves-update", limit: 60, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:shelves-update", limit: 60, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const { id } = await context.params;

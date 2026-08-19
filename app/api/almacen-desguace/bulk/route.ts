@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 import type { PiezaDesguace, PiezaDesguaceInput } from "@/types/almacen-desguace";
 
 const ALLOWED_FIELDS = ["estado_pieza", "estado_proceso", "ubicacion"] as const;
 
 export async function PATCH(request: Request) {
-  const guard = await protectApiRequest(request, {
+  const guard = await protectAdminApiRequest(request, {
     keyPrefix: "desguace:bulk-update",
     limit: 20,
     windowMs: 60_000,

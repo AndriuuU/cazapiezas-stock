@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDrawers } from "@/lib/almacen-desguace-cajones";
 import { UBICACION_PATTERN } from "@/lib/almacen-desguace";
 import { getLocationParts, getShelves } from "@/lib/almacen-desguace-estanterias";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 function drawerInput(value: unknown) {
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:drawers-create", limit: 30, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:drawers-create", limit: 30, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const input = drawerInput(await request.json());

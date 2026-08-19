@@ -4,6 +4,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { AlertTriangle, Archive, ArrowLeft, ArrowRight, Eye, Gauge, Loader2, MapPin, PackageOpen, PackagePlus, Plus, Search, X } from "lucide-react";
 import ModuleHeader from "@/components/almacen-desguace/ModuleHeader";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
 import type { CajonDesguace } from "@/types/almacen-desguace";
 
 type FreeLocation = {
@@ -24,6 +25,8 @@ function locationParts(location: string) {
 }
 
 export default function DrawerManager({ initialDrawers }: { initialDrawers: CajonDesguace[] }) {
+  const currentUser = useCurrentUser();
+  const isAdmin = currentUser?.rol === "administrador";
   const [drawers, setDrawers] = useState(initialDrawers);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -80,11 +83,11 @@ export default function DrawerManager({ initialDrawers }: { initialDrawers: Cajo
   return <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950">
     <ModuleHeader title="Cajones del almacén" subtitle="Varias piezas pequeñas dentro de un único hueco" />
     <div className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-bold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link><button onClick={() => void openForm()} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-black text-zinc-950 hover:bg-amber-400"><Plus size={18} /> Nuevo cajón</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><Link href="/almacen-desguace" className="inline-flex items-center gap-2 text-sm font-bold text-zinc-400 hover:text-white"><ArrowLeft size={17} /> Volver a las piezas</Link>{isAdmin && <button onClick={() => void openForm()} className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 font-black text-zinc-950 hover:bg-amber-400"><Plus size={18} /> Nuevo cajón</button>}</div>
       <section className="grid gap-2 sm:gap-3" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}><Summary icon={<Archive />} label="Cajones" value={drawers.length} tone="amber" /><Summary icon={<PackageOpen />} label="Piezas dentro" value={drawers.reduce((sum, drawer) => sum + drawer.cantidad_piezas, 0)} tone="cyan" /><Summary icon={<Gauge />} label="Cajones llenos" value={drawers.filter((drawer) => drawer.lleno).length} tone="red" /></section>
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4"><div className="mb-3"><h2 className="font-black text-white">Localiza un cajón</h2><p className="text-sm text-zinc-500">Busca por código, contenido o ubicación física.</p></div><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ejemplo: CJ-001, sensores o E01..." className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-3 pl-10 pr-4 text-white outline-none focus:border-cyan-500" /></label></section>
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
-      {visible.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((drawer) => <DrawerCard key={drawer.id} drawer={drawer} onToggleFull={() => void toggleFull(drawer)} />)}</div> : <div className="rounded-2xl border border-dashed border-zinc-700 py-16 text-center text-zinc-500"><Archive className="mx-auto mb-3" size={46} /><p className="font-bold">No hay cajones que mostrar.</p></div>}
+      {visible.length ? <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">{visible.map((drawer) => <DrawerCard key={drawer.id} admin={isAdmin} drawer={drawer} onToggleFull={() => void toggleFull(drawer)} />)}</div> : <div className="rounded-2xl border border-dashed border-zinc-700 py-16 text-center text-zinc-500"><Archive className="mx-auto mb-3" size={46} /><p className="font-bold">No hay cajones que mostrar.</p></div>}
     </div>
 
     {showForm && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4">
@@ -109,7 +112,7 @@ export default function DrawerManager({ initialDrawers }: { initialDrawers: Cajo
   </main>;
 }
 
-function DrawerCard({ drawer, onToggleFull }: { drawer: CajonDesguace; onToggleFull: () => void }) {
+function DrawerCard({ drawer, admin, onToggleFull }: { drawer: CajonDesguace; admin: boolean; onToggleFull: () => void }) {
   const location = locationParts(drawer.ubicacion);
   const full = drawer.lleno;
   const inactive = !drawer.activo;
@@ -138,7 +141,7 @@ function DrawerCard({ drawer, onToggleFull }: { drawer: CajonDesguace; onToggleF
 
     <footer className="grid grid-cols-[1fr_auto] gap-2 border-t border-zinc-800 bg-zinc-950/35 p-4">
       <Link href={`/almacen-desguace/cajones/${drawer.id}`} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-black text-zinc-950 transition hover:bg-cyan-400"><Eye size={18} /> Ver cajón</Link>
-      <button onClick={onToggleFull} className="min-h-11 rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300 transition hover:border-amber-500/40 hover:text-amber-200">{drawer.lleno_manual ? "Liberar" : "Marcar lleno"}</button>
+      {admin && <button onClick={onToggleFull} className="min-h-11 rounded-xl border border-zinc-700 px-3 text-xs font-bold text-zinc-300 transition hover:border-amber-500/40 hover:text-amber-200">{drawer.lleno_manual ? "Liberar" : "Marcar lleno"}</button>}
     </footer>
   </article>;
 }

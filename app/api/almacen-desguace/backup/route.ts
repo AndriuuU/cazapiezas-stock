@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 async function readTable(url: string, key: string, table: string) {
@@ -9,7 +9,7 @@ async function readTable(url: string, key: string, table: string) {
 }
 
 export async function GET(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:backup", limit: 5, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:backup", limit: 5, windowMs: 60_000 });
   if (guard) return guard;
   try {
     const { url, key } = getSupabaseApiConfig();

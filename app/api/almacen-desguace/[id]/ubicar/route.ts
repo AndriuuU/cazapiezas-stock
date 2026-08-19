@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { resolveActionActor } from "@/lib/action-actor";
+import { getRequestUser } from "@/lib/auth";
+import { getWarehouseSettings } from "@/lib/app-settings-server";
 import { getPieza } from "@/lib/almacen-desguace-data";
 import { getLocationParts, getShelfCode, getShelves, suggestLocations } from "@/lib/almacen-desguace-estanterias";
 import { UBICACION_PATTERN } from "@/lib/almacen-desguace";
@@ -13,6 +16,8 @@ export async function GET(request: Request, context: Context) {
   const guard = await protectApiRequest(request, { keyPrefix: "desguace:placement-suggest", limit: 100, windowMs: 60_000 });
   if (guard) return guard;
   try {
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanLocatePieces) return NextResponse.json({ error: "Un administrador ha desactivado la colocación de piezas para empleados." }, { status: 403 });
     const { id } = await context.params;
     const [piece, shelves] = await Promise.all([getPieza(id), getShelves()]);
     if (!piece) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
@@ -27,13 +32,18 @@ export async function POST(request: Request, context: Context) {
   const guard = await protectApiRequest(request, { keyPrefix: "desguace:placement-confirm", limit: 60, windowMs: 60_000 });
   if (guard) return guard;
   try {
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanLocatePieces) return NextResponse.json({ error: "Un administrador ha desactivado la colocación de piezas para empleados." }, { status: 403 });
     const { id } = await context.params;
     const body = await request.json() as {
       resultado?: PlacementResult;
       ubicacion_sugerida?: string;
       ubicacion_final?: string;
       motivo?: string;
+      actor_user_id?: unknown;
     };
+    const actor = await resolveActionActor(request, body.actor_user_id);
+    if (!actor) return NextResponse.json({ error: "Selecciona el empleado que realiza la colocación." }, { status: 400 });
     const result = body.resultado;
     if (!result || !["colocada_sugerida", "colocada_alternativa", "no_colocada"].includes(result)) {
       return NextResponse.json({ error: "Indica el resultado de la colocación." }, { status: 400 });
@@ -90,6 +100,25 @@ export async function POST(request: Request, context: Context) {
       });
       const updated = await parseSupabaseResponse<PiezaDesguace[]>(updateResponse);
       updatedPiece = updated[0];
+
+      const movementParams = new URLSearchParams({ select: "id,ubicacion_anterior,ubicacion_final", pieza_id: `eq.${id}`, order: "created_at.desc", limit: "1" });
+      const movementLookup = await fetch(`${url}/rest/v1/almacen_desguace_ubicaciones_movimientos?${movementParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
+      const latestMovement = movementLookup.ok ? (await parseSupabaseResponse<Array<{ id: number; ubicacion_anterior: string | null; ubicacion_final: string | null }>>(movementLookup))[0] : null;
+      if (latestMovement?.ubicacion_final === finalLocation && latestMovement.ubicacion_anterior === (piece.ubicacion || null)) {
+        const movementUpdate = await fetch(`${url}/rest/v1/almacen_desguace_ubicaciones_movimientos?id=eq.${latestMovement.id}`, {
+          method: "PATCH",
+          headers: supabaseHeaders(key, { Prefer: "return=minimal" }),
+          body: JSON.stringify({
+            estanteria_sugerida_id: suggested?.estanteria.id || null,
+            ubicacion_sugerida: body.ubicacion_sugerida || null,
+            resultado: result,
+            motivo: String(body.motivo || "").trim() || null,
+            usuario_nombre: actor.nombre,
+            origen: "asistente de ubicación",
+          }),
+        });
+        if (!movementUpdate.ok) throw new Error("La pieza se ubicó, pero no se pudo identificar al empleado en el historial.");
+      }
     }
     if (result === "no_colocada") {
       const movementResponse = await fetch(`${url}/rest/v1/almacen_desguace_ubicaciones_movimientos`, {
@@ -103,7 +132,7 @@ export async function POST(request: Request, context: Context) {
           ubicacion_final: null,
           tipo_movimiento: "incidencia",
           motivo: String(body.motivo || "").trim(),
-          usuario_nombre: "Usuario de almacén",
+          usuario_nombre: actor.nombre,
           origen: "asistente de ubicación",
         }),
       });

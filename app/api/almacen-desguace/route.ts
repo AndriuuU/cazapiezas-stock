@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getRequestUser } from "@/lib/auth";
+import { getWarehouseSettings } from "@/lib/app-settings-server";
 import { normalizePiezaInput, validatePieza } from "@/lib/almacen-desguace";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
@@ -114,7 +116,13 @@ export async function GET(request: Request) {
     });
     const requestedView = query.get("vista");
     const view = requestedView === "retiradas" || requestedView === "vendidas" ? requestedView : "almacen";
-    const saleDateSort = view === "vendidas" && ["sale_date.desc", "sale_date.asc"].includes(query.get("sort") || "");
+    const querySort = query.get("sort") || (view === "vendidas" ? "sale_date.desc" : "created_at.desc");
+    const requestedSort = view === "vendidas" && querySort === "created_at.desc"
+      ? "sale_date.desc"
+      : view === "vendidas" && querySort === "created_at.asc"
+        ? "sale_date.asc"
+        : querySort;
+    const saleDateSort = view === "vendidas" && ["sale_date.desc", "sale_date.asc"].includes(requestedSort);
     if (saleDateSort && !allIds) {
       params.set("limit", "10000");
       params.set("offset", "0");
@@ -208,7 +216,7 @@ export async function GET(request: Request) {
     const sortedPieces = saleDateSort ? [...piezas].sort((a, b) => {
       const left = salesIndex.get(a.id)?.fecha_venta || "";
       const right = salesIndex.get(b.id)?.fecha_venta || "";
-      return (query.get("sort") === "sale_date.asc" ? 1 : -1) * left.localeCompare(right);
+      return (requestedSort === "sale_date.asc" ? 1 : -1) * left.localeCompare(right);
     }) : piezas;
     const visiblePieces = saleDateSort ? sortedPieces.slice(offset, offset + pageSize) : sortedPieces;
     const items = await Promise.all(visiblePieces.map(async (pieza) => {
@@ -239,6 +247,10 @@ export async function POST(request: Request) {
 
   try {
     const input = normalizePiezaInput(await request.json());
+    const signedUser = await getRequestUser(request);
+    if (signedUser?.rol !== "administrador" && !(await getWarehouseSettings()).employeesCanCreatePieces) return NextResponse.json({ error: "Un administrador ha desactivado el registro de piezas para empleados." }, { status: 403 });
+    const employeeProcesses = ["Pendiente de identificar", "Pendiente de comprobar", "Pendiente de fotografiar", "Lista para publicar"];
+    if (signedUser?.rol !== "administrador" && input.estado_proceso && !employeeProcesses.includes(input.estado_proceso)) return NextResponse.json({ error: "Al registrar, un empleado solo puede dejar la pieza pendiente o lista para revisar." }, { status: 403 });
     if (input.estado_proceso === "Vendida") return NextResponse.json({ error: "Primero registra la pieza y después usa el flujo Registrar venta." }, { status: 400 });
     input.publicado_online = input.estado_proceso === "Publicada";
     if (input.estado_proceso === "Retirada") Object.assign(input, { publicado_online: false, ubicacion: null, cajon_id: null });

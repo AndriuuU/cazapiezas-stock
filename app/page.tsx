@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
-import { AlertCircle, BellRing, CheckCircle, List, Loader2, PackagePlus, Search, Warehouse } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle, KeyRound, List, Loader2, LogOut, PackagePlus, Search, Settings2, ShieldCheck, Warehouse, Wrench } from "lucide-react";
 import Link from "next/link";
 import CacheLoader from "@/components/CacheLoader";
 import Logo from "@/components/Logo";
@@ -18,6 +18,7 @@ import {
 import { searchByBarcode, searchByReference, searchMaterial } from "@/services/search";
 import { Material } from "@/types/material";
 import { getStockMinimum, isLowStock } from "@/lib/stock-alerts";
+import type { AppUser } from "@/lib/app-users";
 
 export default function Home() {
   const [scannedCode, setScannedCode] = useState("");
@@ -34,6 +35,7 @@ export default function Home() {
   const [allMaterials, setAllMaterials] = useState<Material[]>([]);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [materialsListFilter, setMaterialsListFilter] = useState<"all" | "alerts">("all");
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -43,6 +45,10 @@ export default function Home() {
       setCacheItemCount(info.itemCount);
       setLowStockCount(getAllMaterialsFromCache().filter(isLowStock).length);
     });
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/auth/me", { cache: "no-store" }).then((response) => response.json()).then((payload: { user?: AppUser }) => setCurrentUser(payload.user || null)).catch(() => undefined);
   }, []);
 
   const handleCacheLoaded = useCallback((count: number) => {
@@ -218,7 +224,11 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 p-4">
       <div className="max-w-2xl mx-auto">
-        <div className="flex flex-col items-center justify-center mb-8 pt-6 text-center">
+        <div className="mb-4 flex items-center justify-between gap-3 pt-2">
+          <Link href="/mi-cuenta" className="flex min-w-0 items-center gap-2 rounded-xl py-1 pr-2 text-left"><KeyRound size={18} className="shrink-0 text-cyan-400" /><span className="min-w-0"><span className="block truncate text-sm font-bold text-zinc-200">{currentUser?.nombre || "Usuario"}</span><span className="block text-xs text-zinc-500">{currentUser?.rol === "administrador" ? "Administrador" : "Empleado"} · Cambiar PIN</span></span></Link>
+          <button onClick={() => void fetch("/api/auth/logout", { method: "POST" }).finally(() => window.location.replace("/login"))} className="flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 px-3 text-sm font-bold text-zinc-400"><LogOut size={17} /> Salir</button>
+        </div>
+        <div className="flex flex-col items-center justify-center mb-8 text-center">
           <Logo size={56} />
         </div>
 
@@ -357,6 +367,14 @@ export default function Home() {
                 <Warehouse className="w-5 h-5" />
                 Almacén Desguace
               </Link>
+              <Link
+                href="/herramientas-comunes"
+                className="w-full min-h-14 py-4 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 rounded-2xl flex items-center justify-center gap-2 text-cyan-300 font-semibold transition-all active:scale-95 md:col-span-2"
+              >
+                <Wrench className="w-5 h-5" />
+                Herramientas comunes
+              </Link>
+              {currentUser?.rol === "administrador" && <><Link href="/admin/usuarios" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-violet-500/30 bg-violet-500/10 py-4 font-semibold text-violet-300 transition-all active:scale-95"><ShieldCheck className="h-5 w-5" /> Usuarios y permisos</Link><Link href="/admin/configuracion" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 py-4 font-semibold text-cyan-300 transition-all active:scale-95"><Settings2 className="h-5 w-5" /> Configuración</Link></>}
             </div>
           </>
         )}

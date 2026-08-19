@@ -7,6 +7,9 @@ import { createPortal } from "react-dom";
 import { Archive, CheckCircle2, ChevronLeft, Images, Loader2, MapPin, PackagePlus, Plus, ScanBarcode, ShoppingBag, Warehouse, X } from "lucide-react";
 import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
 import SaleModal from "@/components/almacen-desguace/SaleModal";
+import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
+import { useCurrentUser } from "@/components/auth/useCurrentUser";
+import type { AppUser } from "@/lib/app-users";
 import type { CajonDesguace, PiezaDesguace, SugerenciaUbicacion } from "@/types/almacen-desguace";
 
 type QuickAction = "locate" | "sell" | "photos" | "series";
@@ -44,6 +47,9 @@ function notifyWarehouseChanged() {
 
 export default function MobileQuickActions({ onClose }: { onClose: () => void }) {
   const router = useRouter();
+  const currentUser = useCurrentUser();
+  const actionActors = useActionActors(currentUser);
+  const [actorUserId, setActorUserId] = useState("");
   const [action, setAction] = useState<QuickAction | null>(null);
   const [scanning, setScanning] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -135,6 +141,10 @@ export default function MobileQuickActions({ onClose }: { onClose: () => void })
 
   async function saveLocation() {
     if (!piece || (!selectedLocation && !selectedDrawer)) return;
+    if (selectedLocation && currentUser?.rol === "administrador" && !actorUserId) {
+      setError("Selecciona el empleado que coloca la pieza.");
+      return;
+    }
     setSaving(true); setError("");
     try {
       let message = "";
@@ -152,7 +162,7 @@ export default function MobileQuickActions({ onClose }: { onClose: () => void })
       } else {
         const response = await fetch(`/api/almacen-desguace/${piece.id}/ubicar`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resultado: "colocada_alternativa", ubicacion_final: selectedLocation, motivo: action === "series" ? "Ubicación rápida en serie" : "Ubicación rápida desde móvil" }),
+          body: JSON.stringify({ resultado: "colocada_alternativa", ubicacion_final: selectedLocation, motivo: action === "series" ? "Ubicación rápida en serie" : "Ubicación rápida desde móvil", actor_user_id: actorUserId }),
         });
         const data = await response.json() as { error?: string };
         if (!response.ok) throw new Error(data.error || "No se pudo ubicar la pieza.");
@@ -200,7 +210,7 @@ export default function MobileQuickActions({ onClose }: { onClose: () => void })
 
         {action && !piece && !matches.length && !searching && !success && <div className="py-8 text-center"><ScanBarcode className="mx-auto text-zinc-700" size={46} /><p className="mt-3 font-bold text-zinc-300">No hay ninguna pieza seleccionada.</p><button onClick={() => setScanning(true)} className="mt-4 rounded-xl bg-cyan-500 px-5 py-3 font-black text-zinc-950">Escanear pieza</button></div>}
 
-        {piece && (action === "locate" || action === "series") && <LocationPanel piece={piece} series={action === "series"} loading={destinationsLoading} saving={saving} locations={freeLocations} drawers={drawers} selectedLocation={selectedLocation} selectedDrawer={selectedDrawer} lastDestination={lastDestination} onLocation={(value) => { setSelectedLocation(value); setSelectedDrawer(""); }} onDrawer={(value) => { setSelectedDrawer(value); setSelectedLocation(""); }} onSave={() => void saveLocation()} onRescan={() => { setPiece(null); setScanning(true); }} />}
+        {piece && (action === "locate" || action === "series") && <LocationPanel piece={piece} series={action === "series"} loading={destinationsLoading} saving={saving} locations={freeLocations} drawers={drawers} selectedLocation={selectedLocation} selectedDrawer={selectedDrawer} lastDestination={lastDestination} currentUser={currentUser} actionUsers={actionActors.users} actionUsersLoading={actionActors.loading} actorUserId={actorUserId} onActorUserId={setActorUserId} onLocation={(value) => { setSelectedLocation(value); setSelectedDrawer(""); }} onDrawer={(value) => { setSelectedDrawer(value); setSelectedLocation(""); }} onSave={() => void saveLocation()} onRescan={() => { setPiece(null); setScanning(true); }} />}
       </div>
     </section>
     <div aria-hidden="true" className="w-full shrink-0 sm:hidden" style={{ height: "calc(4.25rem + env(safe-area-inset-bottom))" }} />
@@ -222,13 +232,14 @@ function QuickButton({ icon, title, text, tone, onClick }: { icon: React.ReactNo
   return <button type="button" onClick={onClick} className={`min-h-32 rounded-2xl border p-4 text-left active:scale-95 ${colors[tone]}`}><span className="[&>svg]:h-7 [&>svg]:w-7">{icon}</span><strong className="mt-3 block text-sm text-white">{title}</strong><small className="mt-1 block leading-4 opacity-75">{text}</small></button>;
 }
 
-function LocationPanel({ piece, series, loading, saving, locations, drawers, selectedLocation, selectedDrawer, lastDestination, onLocation, onDrawer, onSave, onRescan }: { piece: PiezaDesguace; series: boolean; loading: boolean; saving: boolean; locations: FreeLocation[]; drawers: CajonDesguace[]; selectedLocation: string; selectedDrawer: string; lastDestination: LastDestination | null; onLocation: (value: string) => void; onDrawer: (value: string) => void; onSave: () => void; onRescan: () => void }) {
+function LocationPanel({ piece, series, loading, saving, locations, drawers, selectedLocation, selectedDrawer, lastDestination, currentUser, actionUsers, actionUsersLoading, actorUserId, onActorUserId, onLocation, onDrawer, onSave, onRescan }: { piece: PiezaDesguace; series: boolean; loading: boolean; saving: boolean; locations: FreeLocation[]; drawers: CajonDesguace[]; selectedLocation: string; selectedDrawer: string; lastDestination: LastDestination | null; currentUser: AppUser | null; actionUsers: AppUser[]; actionUsersLoading: boolean; actorUserId: string; onActorUserId: (value: string) => void; onLocation: (value: string) => void; onDrawer: (value: string) => void; onSave: () => void; onRescan: () => void }) {
   const selectedLocationData = locations.find((item) => item.ubicacion === selectedLocation);
   const selectedDrawerData = drawers.find((item) => item.id === Number(selectedDrawer));
   return <div className="space-y-4">
     <button onClick={onRescan} className="inline-flex items-center gap-1 text-sm font-bold text-zinc-400"><ChevronLeft size={17} /> Escanear otra pieza</button>
     <section className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4"><p className="font-mono text-xs font-black text-amber-300">{piece.codigo_interno}</p><h3 className="mt-1 text-lg font-black text-white">{piece.nombre_pieza || "Pieza sin nombre"}</h3><p className="mt-1 text-xs text-zinc-500">{piece.ubicacion ? `Actualmente en ${piece.ubicacion}` : piece.cajon ? `Actualmente en ${piece.cajon.codigo}` : "Actualmente sin ubicación"}</p></section>
     {series && lastDestination && <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 p-3 text-sm text-violet-200"><strong>Modo serie:</strong> {lastDestination.kind === "drawer" ? `se repetirá ${lastDestination.label} mientras tenga espacio.` : "se ha seleccionado el siguiente hueco libre del mismo nivel."}</div>}
+    {selectedLocation && <ActionActorSelect currentUser={currentUser} users={actionUsers} loading={actionUsersLoading} value={actorUserId} onChange={onActorUserId} label="Quién coloca la pieza" />}
     {loading ? <div className="flex min-h-40 items-center justify-center gap-2 text-zinc-400"><Loader2 className="animate-spin text-cyan-400" /> Buscando destinos disponibles...</div> : <>
       <label className="block"><span className="mb-1.5 flex items-center gap-2 text-sm font-black text-emerald-200"><Warehouse size={17} /> Estantería y hueco</span><select value={selectedLocation} onChange={(event) => onLocation(event.target.value)} className="min-h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-white"><option value="">Elegir un hueco libre</option>{locations.map((item) => <option key={item.ubicacion} value={item.ubicacion}>{item.estanteria_codigo} · Nivel {item.nivel} · Hueco {item.hueco} · {item.zona}</option>)}</select></label>
       <div className="flex items-center gap-3 text-xs text-zinc-600"><span className="h-px flex-1 bg-zinc-800" />O GUARDAR EN CAJÓN<span className="h-px flex-1 bg-zinc-800" /></div>

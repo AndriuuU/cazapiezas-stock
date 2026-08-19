@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { recordAuditEventsSafely } from "@/lib/almacen-desguace-auditoria";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
 
 function normalizeIds(value: unknown) {
@@ -10,7 +10,7 @@ function normalizeIds(value: unknown) {
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiRequest(request, { keyPrefix: "desguace:rf-confirm-online", limit: 20, windowMs: 60_000 });
+  const guard = await protectAdminApiRequest(request, { keyPrefix: "desguace:rf-confirm-online", limit: 20, windowMs: 60_000 });
   if (guard) return guard;
 
   try {

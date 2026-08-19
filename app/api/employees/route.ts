@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { protectApiRequest } from "@/lib/request-security";
+import { protectAdminApiRequest, protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, supabaseHeaders } from "@/lib/supabase-rest";
 
 const EMPLOYEES_REFERENCE = "__EMPLOYEES__";
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const guard = await protectApiRequest(request, {
+  const guard = await protectAdminApiRequest(request, {
     keyPrefix: "employees:write",
     limit: 15,
     windowMs: 60 * 1000,

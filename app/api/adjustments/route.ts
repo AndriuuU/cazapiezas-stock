@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import axios from "axios";
 import { protectApiRequest } from "@/lib/request-security";
+import { resolveActionActor } from "@/lib/action-actor";
 
 interface StockAdjustment {
   id?: string;
@@ -250,11 +251,12 @@ export async function POST(request: Request) {
       name,
       quantity_before,
       quantity_after,
-      employee_name,
+      actor_user_id,
     } = body;
     const nextQuantity = Number(quantity_after);
     const previousQuantity = Number(quantity_before);
-    const employeeName = String(employee_name || "").trim();
+    const actor = await resolveActionActor(request, actor_user_id);
+    const employeeName = actor?.nombre.trim() || "";
 
     if (!material_id || !Number.isFinite(nextQuantity) || nextQuantity < 0) {
       return NextResponse.json(
@@ -265,7 +267,7 @@ export async function POST(request: Request) {
 
     if (!employeeName) {
       return NextResponse.json(
-        { error: "Selecciona quién ha cogido el material" },
+        { error: "Selecciona quién ha cogido o cambiado el material" },
         { status: 400 }
       );
     }
