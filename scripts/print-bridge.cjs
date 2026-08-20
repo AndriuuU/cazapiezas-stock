@@ -8,7 +8,10 @@ const { spawn, spawnSync } = require("node:child_process");
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.CAZAPIEZAS_PRINT_PORT || 8765);
 const DRY_RUN = process.env.CAZAPIEZAS_PRINT_DRY_RUN === "1";
-const MAX_BODY_BYTES = 180_000;
+// Una estantería puede incluir decenas de QR en un único documento. El puente
+// solo escucha en la red privada y sanea el HTML antes de imprimir, por lo que
+// admitimos lotes grandes sin abrir la puerta a trabajos ilimitados.
+const MAX_BODY_BYTES = 5_000_000;
 const jobs = new Map();
 const PRINTER_QUEUES = {
   "62x32": "Brother QL-570 - Corte 32 mm",
@@ -129,16 +132,19 @@ function readJson(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let tooLarge = false;
     request.on("data", (chunk) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
         reject(new Error("La etiqueta es demasiado grande."));
-        request.destroy();
         return;
       }
       chunks.push(chunk);
     });
     request.on("end", () => {
+      if (tooLarge) return;
       try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
       catch { reject(new Error("La solicitud no es válida.")); }
     });
