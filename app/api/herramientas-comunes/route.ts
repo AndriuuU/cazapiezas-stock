@@ -41,36 +41,38 @@ export async function POST(request: Request) {
     const signedUser = await getRequestUser(request);
     const body = await request.json();
     const nombre = clean(body.nombre, 150);
-    const estanteriaId = Number(body.estanteria_id);
-    const nivel = Number(body.nivel);
-    const posicion = clean(body.posicion, 80);
-    if (!nombre || !Number.isInteger(estanteriaId) || !Number.isInteger(nivel) || nivel < 1 || !posicion) {
-      return NextResponse.json({ error: "Indica nombre, estantería, nivel y posición." }, { status: 400 });
-    }
+    if (!nombre) return NextResponse.json({ error: "Indica el nombre de la herramienta." }, { status: 400 });
     const { url, key } = getSupabaseApiConfig();
-    const shelfParams = new URLSearchParams({ select: "*", id: `eq.${estanteriaId}`, limit: "1" });
-    const shelfResponse = await fetch(`${url}/rest/v1/herramientas_comunes_estanterias?${shelfParams}`, { headers: supabaseHeaders(key) });
-    const shelf = (await parseSupabaseResponse<EstanteriaHerramientas[]>(shelfResponse))[0];
-    if (!shelf || !shelfPositionExists(shelf.configuracion, nivel, posicion)) return NextResponse.json({ error: "La ubicación seleccionada no es válida." }, { status: 400 });
     const fotoUrl = clean(body.foto_url, 1000);
     if (fotoUrl && !/^https?:\/\//i.test(fotoUrl)) return NextResponse.json({ error: "La foto debe ser un enlace web válido." }, { status: 400 });
+    const hasAnyLocation = body.estanteria_id != null || body.nivel != null || clean(body.posicion, 80) !== "";
+    const shelfId = Number(body.estanteria_id); const level = Number(body.nivel); const position = clean(body.posicion, 80).toUpperCase();
+    let selectedShelf: EstanteriaHerramientas | null = null;
+    if (hasAnyLocation) {
+      if (!Number.isInteger(shelfId) || !Number.isInteger(level) || !position) return NextResponse.json({ error: "Completa la estantería, el nivel y el compartimento, o deja la ubicación vacía." }, { status: 400 });
+      const shelfParams = new URLSearchParams({ select: "*", id: `eq.${shelfId}`, activa: "eq.true", limit: "1" });
+      const shelfResponse = await fetch(`${url}/rest/v1/herramientas_comunes_estanterias?${shelfParams}`, { headers: supabaseHeaders(key) });
+      selectedShelf = (await parseSupabaseResponse<EstanteriaHerramientas[]>(shelfResponse))[0] || null;
+      if (!selectedShelf || !shelfPositionExists(selectedShelf.configuracion, level, position)) return NextResponse.json({ error: "La ubicación elegida ya no existe en el plano." }, { status: 400 });
+    }
     const payload = {
-      ...(clean(body.codigo, 40) && { codigo: clean(body.codigo, 40).toUpperCase() }),
       nombre,
       categoria: clean(body.categoria, 100) || null,
       marca: clean(body.marca, 100) || null,
       descripcion: clean(body.descripcion, 500) || null,
+      solo_localizacion: body.solo_localizacion === true || body.solo_localizacion === "true" || body.solo_localizacion === "on",
+      espacio_ocupado: clean(body.espacio_ocupado, 150) || null,
       foto_url: fotoUrl || null,
-      estanteria_id: estanteriaId,
-      nivel,
-      posicion,
+      estanteria_id: selectedShelf ? shelfId : null,
+      nivel: selectedShelf ? level : null,
+      posicion: selectedShelf ? position : null,
     };
     const response = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?select=*`, {
       method: "POST", headers: supabaseHeaders(key, { Prefer: "return=representation" }), body: JSON.stringify(payload),
     });
     const tool = (await parseSupabaseResponse<HerramientaComun[]>(response))[0];
     await fetch(`${url}/rest/v1/herramientas_comunes_movimientos`, {
-      method: "POST", headers: supabaseHeaders(key), body: JSON.stringify({ herramienta_id: tool.id, tipo: "alta", empleado: signedUser?.nombre || "Administrador", estado_nuevo: "disponible", detalle: `Ubicación inicial: ${shelf.codigo} · nivel ${nivel} · ${posicion}` }),
+      method: "POST", headers: supabaseHeaders(key), body: JSON.stringify({ herramienta_id: tool.id, tipo: "alta", empleado: signedUser?.nombre || "Administrador", estado_nuevo: "disponible", detalle: selectedShelf ? `Registrada en ${selectedShelf.codigo} · nivel ${level} · ${position}.` : "Registrada sin ubicación. Pendiente de colocar mediante QR o desde el plano." }),
     });
     return NextResponse.json(tool, { status: 201 });
   } catch (error) {

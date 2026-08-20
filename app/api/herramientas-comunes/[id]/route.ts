@@ -17,10 +17,10 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "Herramienta no válida." }, { status: 400 });
-    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown };
+    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown; solo_localizacion?: unknown; espacio_ocupado?: unknown };
     const signedUser = await getRequestUser(request);
     if (!signedUser) return NextResponse.json({ error: "Inicia sesión para continuar." }, { status: 401 });
-    if ((body.action === "ubicacion" || body.action === "editar") && signedUser.rol !== "administrador") return NextResponse.json({ error: "Esta acción necesita permisos de administrador." }, { status: 403 });
+    if (body.action === "editar" && signedUser.rol !== "administrador") return NextResponse.json({ error: "Esta acción necesita permisos de administrador." }, { status: 403 });
     const { url, key } = getSupabaseApiConfig();
     const select = new URLSearchParams({ select: "*", id: `eq.${id}`, limit: "1" });
     const currentResponse = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?${select}`, { headers: supabaseHeaders(key) });
@@ -38,6 +38,8 @@ export async function PATCH(request: Request, context: Context) {
     if (!actor) return NextResponse.json({ error: "Selecciona el empleado que retira la herramienta." }, { status: 400 });
     const employee = clean(actor.nombre, 100);
     const vehicle = clean(body.vehiculo, 120) || null;
+    if (body.action === "retirar" && current.solo_localizacion) return NextResponse.json({ error: "Este material es solo para localizar y no se puede retirar." }, { status: 409 });
+    if (body.action === "retirar" && (!current.estanteria_id || !current.nivel || !current.posicion)) return NextResponse.json({ error: "Coloca primero la herramienta en una ubicación antes de retirarla." }, { status: 409 });
     if (body.action === "retirar" && settings.requireVehicleOnLoan && !vehicle) return NextResponse.json({ error: "Indica el vehículo antes de retirar la herramienta." }, { status: 400 });
     if (body.action === "devolver" && settings.requireLocationScanOnReturn) {
       const confirmedShelf = Number(body.estanteria_id); const confirmedLevel = Number(body.nivel); const confirmedPosition = clean(body.posicion, 80);
@@ -86,20 +88,15 @@ export async function PATCH(request: Request, context: Context) {
       nextState = current.estado;
       patch = { estanteria_id: shelfId, nivel: level, posicion: position };
       type = "cambio_ubicacion";
-      body.detalle = `${current.estanteria_id} · nivel ${current.nivel} · ${current.posicion} → ${shelf.codigo} · nivel ${level} · ${position}`;
+      body.detalle = `${current.estanteria_id ? `${current.estanteria_id} · nivel ${current.nivel} · ${current.posicion}` : "Sin ubicación"} → ${shelf.codigo} · nivel ${level} · ${position}`;
     } else if (body.action === "editar") {
-      const code = clean(body.codigo, 40).toUpperCase(); const name = clean(body.nombre, 150);
-      const shelfId = Number(body.estanteria_id); const level = Number(body.nivel); const position = clean(body.posicion, 80);
-      if (!/^[A-Z0-9-]{2,40}$/.test(code) || !name) return NextResponse.json({ error: "Indica un código y un nombre válidos." }, { status: 400 });
-      const shelfParams = new URLSearchParams({ select: "*", id: `eq.${shelfId}`, activa: "eq.true", limit: "1" });
-      const shelfResponse = await fetch(`${url}/rest/v1/herramientas_comunes_estanterias?${shelfParams}`, { headers: supabaseHeaders(key) });
-      const shelf = (await parseSupabaseResponse<EstanteriaHerramientas[]>(shelfResponse))[0];
-      if (!shelf || !shelfPositionExists(shelf.configuracion, level, position)) return NextResponse.json({ error: "La ubicación seleccionada no es válida." }, { status: 400 });
+      const name = clean(body.nombre, 150);
+      if (!name) return NextResponse.json({ error: "Indica un nombre válido." }, { status: 400 });
       nextState = current.estado;
-      patch = { codigo: code, nombre: name, categoria: clean(body.categoria, 100) || null, marca: clean(body.marca, 100) || null, descripcion: clean(body.descripcion, 500) || null, estanteria_id: shelfId, nivel: level, posicion: position };
-      const locationChanged = current.estanteria_id !== shelfId || current.nivel !== level || current.posicion !== position;
-      type = locationChanged ? "cambio_ubicacion" : null;
-      if (locationChanged) body.detalle = `${current.estanteria_id} · nivel ${current.nivel} · ${current.posicion} → ${shelf.codigo} · nivel ${level} · ${position}`;
+      const onlyLocation = body.solo_localizacion === true || body.solo_localizacion === "true" || body.solo_localizacion === "on";
+      if (onlyLocation && current.estado === "prestada") return NextResponse.json({ error: "Devuelve primero la herramienta antes de marcarla como solo localización." }, { status: 409 });
+      patch = { nombre: name, categoria: clean(body.categoria, 100) || null, marca: clean(body.marca, 100) || null, descripcion: clean(body.descripcion, 500) || null, solo_localizacion: onlyLocation, espacio_ocupado: clean(body.espacio_ocupado, 150) || null };
+      type = null;
     } else {
       return NextResponse.json({ error: "Acción no válida." }, { status: 400 });
     }

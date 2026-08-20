@@ -42,17 +42,19 @@ export interface HerramientaComun {
   categoria: string | null;
   marca: string | null;
   descripcion: string | null;
+  solo_localizacion: boolean;
+  espacio_ocupado: string | null;
   foto_url: string | null;
-  estanteria_id: number;
-  nivel: number;
-  posicion: string;
+  estanteria_id: number | null;
+  nivel: number | null;
+  posicion: string | null;
   estado: EstadoHerramienta;
   empleado_actual: string | null;
   vehiculo_actual: string | null;
   retirada_at: string | null;
   created_at: string;
   updated_at: string;
-  estanteria?: EstanteriaHerramientas;
+  estanteria?: EstanteriaHerramientas | null;
   fotos?: FotoHerramientaComun[];
 }
 
