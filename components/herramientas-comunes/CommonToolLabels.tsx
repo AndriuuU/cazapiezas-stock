@@ -28,8 +28,15 @@ export function ToolQrLabelButton({ tool, compact = false }: { tool: Herramienta
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo generar la etiqueta."); }
     finally { setBusy(false); }
   }
+  async function printNameAndCode() {
+    setBusy(true);
+    try {
+      openPrint(nameAndCodeDocument(tool), "brother");
+    } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo generar la etiqueta con el nombre."); }
+    finally { setBusy(false); }
+  }
   const classes = compact ? "action" : "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-cyan-500/30 px-4 font-bold text-cyan-200";
-  return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} /><button type="button" disabled={busy} onClick={() => void print("brother")} className={classes}>{busy ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} Etiqueta QR</button>{!compact && <button type="button" disabled={busy} onClick={() => void print("browser")} className={classes}><Printer size={16} /> PDF / otra impresora</button>}</div>;
+  return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} /><button type="button" disabled={busy} onClick={() => void print("brother")} className={classes}>{busy ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} Etiqueta QR</button><button type="button" disabled={busy} onClick={() => void printNameAndCode()} className={classes}><Printer size={16} /> Nombre + código · pequeña</button>{!compact && <button type="button" disabled={busy} onClick={() => void print("browser")} className={classes}><Printer size={16} /> PDF / otra impresora</button>}</div>;
 }
 
 export function ShelfLocationLabelsButton({ shelf, compact = false }: { shelf: EstanteriaHerramientas; compact?: boolean }) {
@@ -90,6 +97,21 @@ function documentHtml(labels: string, size: LabelSize) {
   }[size];
   const grid = layout.equalColumns ? "grid-template-columns:minmax(0,1fr) minmax(0,1fr)" : `grid-template-columns:minmax(0,1fr) ${layout.qrColumn}mm`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>Etiquetas QR</title><style>@page{size:${layout.width}mm ${layout.height}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;width:${layout.width}mm;height:${layout.height}mm;background:#fff;color:#000;font-family:Arial,sans-serif}.label{width:${layout.width}mm;height:${layout.height}mm;page-break-after:always;padding:2.5mm 2.5mm 2.5mm 4mm;display:grid;${grid};gap:2mm;overflow:hidden}.info{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}.name{min-height:0;font-family:"Arial Narrow",Arial,sans-serif;font-weight:900;line-height:.96;overflow-wrap:break-word;word-break:normal;margin:0 0 .8mm}.code{flex:0 0 auto;font:900 ${layout.code}pt/1 monospace;margin:.5mm 0;padding-bottom:.6mm;border-bottom:.35mm solid #000;white-space:nowrap}.place{flex:0 0 auto;margin-top:.6mm;font-size:${layout.place}pt;font-weight:800;line-height:1.02;overflow-wrap:break-word}.qrbox{display:flex;align-items:center;justify-content:center;border-left:.35mm solid #000;padding-left:1.5mm}.qr{display:block;width:${layout.qr}mm;height:${layout.qr}mm;image-rendering:pixelated}.label:last-child{page-break-after:auto}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${labels}<script>window.onload=()=>window.print()</script></body></html>`;
+}
+
+function nameAndCodeDocument(tool: HerramientaComun) {
+  const fallbackFontSize = nameAndCodeFallbackFontSize(tool.nombre);
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${safe(tool.codigo)} · ${safe(tool.nombre)}</title><style>@page{size:62mm 32mm;margin:0}*{box-sizing:border-box}html,body{margin:0;width:62mm;height:32mm;background:#fff;color:#000;font-family:Arial,sans-serif}.label{width:62mm;height:32mm;padding:2.5mm 3mm 2.5mm 4mm;display:flex;flex-direction:column;overflow:hidden}.code{flex:0 0 auto;margin:0 0 1.5mm;padding-bottom:1mm;border-bottom:.45mm solid #000;font:900 12pt/1 monospace;white-space:nowrap}.name-box{flex:1;min-width:0;min-height:0;display:flex;align-items:center}.name{display:block;width:100%;margin:0;font-family:"Arial Narrow",Arial,sans-serif;font-size:${fallbackFontSize}pt;font-weight:900;line-height:1;white-space:normal;overflow-wrap:normal;word-break:normal;hyphens:none}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><section class="label"><div class="code">${safe(tool.codigo)}</div><div class="name-box"><div class="name" data-fit-name data-max-font="42">${safe(tool.nombre)}</div></div></section><script>window.onload=()=>{const name=document.querySelector('[data-fit-name]');const box=name.parentElement;let size=42;name.style.fontSize=size+'pt';while(size>2&&(name.scrollHeight>box.clientHeight||name.scrollWidth>box.clientWidth)){size-=.25;name.style.fontSize=size+'pt'}requestAnimationFrame(()=>window.print())}</script></body></html>`;
+}
+
+function nameAndCodeFallbackFontSize(value: string) {
+  const length = value.trim().length;
+  const longestWord = Math.max(0, ...value.trim().split(/\s+/).map((word) => word.length));
+  let size = length > 120 ? 5 : length > 90 ? 6 : length > 65 ? 8 : length > 45 ? 10.5 : length > 30 ? 14 : length > 20 ? 17 : length > 12 ? 22 : 28;
+  if (longestWord > 20) size = Math.min(size, 9);
+  else if (longestWord > 15) size = Math.min(size, 12);
+  else if (longestWord > 11) size = Math.min(size, 16);
+  return size;
 }
 
 type A4Location = { rowName: string; position: string; columns: number; manualCode: string; qr: string };
