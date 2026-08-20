@@ -52,11 +52,15 @@ export default function CommonToolsPage() {
   const [unlocatedOpen, setUnlocatedOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelTool, setLabelTool] = useState<HerramientaComun | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; alt: string } | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const handledInitialQr = useRef(false);
+  const backgroundRefreshInFlight = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (silent && backgroundRefreshInFlight.current) return;
+    if (silent) backgroundRefreshInFlight.current = true;
+    else setLoading(true);
     try {
       const [response, settingsResponse] = await Promise.all([fetch("/api/herramientas-comunes", { cache: "no-store" }), fetch("/api/configuracion/herramientas", { cache: "no-store" })]);
       const payload = await response.json() as Data & { error?: string; setupRequired?: boolean };
@@ -68,11 +72,27 @@ export default function CommonToolsPage() {
       setError(""); setSetupRequired(false);
       return payload;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudieron cargar las herramientas.");
-    } finally { setLoading(false); }
+      if (!silent) setError(caught instanceof Error ? caught.message : "No se pudieron cargar las herramientas.");
+    } finally {
+      if (silent) backgroundRefreshInFlight.current = false;
+      else setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { void Promise.resolve().then(load); }, [load]);
+  useEffect(() => { void Promise.resolve().then(() => load()); }, [load]);
+  useEffect(() => {
+    const refreshWhenActive = () => {
+      if (document.visibilityState === "visible") void load({ silent: true });
+    };
+    const interval = window.setInterval(refreshWhenActive, 3000);
+    window.addEventListener("focus", refreshWhenActive);
+    document.addEventListener("visibilitychange", refreshWhenActive);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshWhenActive);
+      document.removeEventListener("visibilitychange", refreshWhenActive);
+    };
+  }, [load]);
   useEffect(() => {
     void fetch("/api/auth/me", { cache: "no-store" }).then((response) => response.json()).then((payload: { user?: AppUser }) => setCurrentUser(payload.user || null)).catch(() => setCurrentUser(null));
   }, []);
@@ -175,7 +195,7 @@ export default function CommonToolsPage() {
     }
     setReturningTool(tool); setScannerMode("return-location");
   }
-  return <main className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100">
+  return <main onClick={(event) => { const target = event.target; if (target instanceof HTMLImageElement && target.currentSrc) setPhotoPreview({ url: target.currentSrc, alt: target.alt || "Fotografía de la herramienta" }); }} className="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100">
     <header className="border-b border-zinc-800 bg-zinc-950/90"><div className="mx-auto flex max-w-[1500px] items-center justify-between gap-3 px-4 py-4 sm:px-6"><div className="flex min-w-0 items-center gap-3"><span className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-2.5 text-cyan-300"><Wrench size={24} /></span><div><h1 className="truncate text-lg font-black">HERRAMIENTAS COMUNES</h1><p className="truncate text-xs text-zinc-500">Ubicación, disponibilidad y préstamos</p></div></div><Link href="/" className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 px-3 py-2 text-sm font-bold text-zinc-300 hover:bg-zinc-800"><ArrowLeft size={16} /><span className="hidden sm:inline">Volver al inicio</span></Link></div></header>
     <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-6">
       <section className="hidden grid-cols-3 gap-3 sm:grid"><Summary label="Herramientas" value={data.tools.length} tone="cyan" /><Summary label="Disponibles" value={available} tone="emerald" /><Summary label="Prestadas" value={loaned} tone="amber" /></section>
@@ -199,6 +219,7 @@ export default function CommonToolsPage() {
     {scannedLocation && <ScannedLocationModal value={scannedLocation} tools={data.tools.filter((tool) => tool.estanteria_id === scannedLocation.shelf.id && tool.nivel === scannedLocation.level && normalizePosition(tool.posicion) === scannedLocation.position)} returningTool={returningTool} onClose={() => { setScannedLocation(null); setReturningTool(null); }} onRetry={() => { setScannedLocation(null); setScannerMode("return-location"); }} />}
     {labelsOpen && <LabelsModal tools={data.tools} shelves={data.shelves} onClose={() => setLabelsOpen(false)} />}
     {labelTool && <ToolLabelAfterSaveModal tool={labelTool} onClose={() => setLabelTool(null)} />}
+    {photoPreview && <PhotoPreview url={photoPreview.url} alt={photoPreview.alt} onClose={() => setPhotoPreview(null)} />}
   </main>;
 }
 
@@ -350,6 +371,20 @@ function HistoryModal({ tool, movements, onClose }: { tool: HerramientaComun; mo
 
 function PhotoSnapshot({ title, url, date }: { title: string; url: string; date: string }) {
   return <figure className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950"><img src={url} alt={title} className="aspect-square w-full object-cover" /><figcaption className="p-2"><p className="text-xs font-black text-white">{title}</p><p className="text-[10px] text-zinc-500">{formatDate(date)}</p></figcaption></figure>;
+}
+
+function PhotoPreview({ url, alt, onClose }: { url: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+  return <div onClick={(event) => event.stopPropagation()} className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-8"><button type="button" aria-label="Cerrar fotografía" onClick={onClose} className="absolute inset-0 bg-black/95" /><div className="relative z-10 flex max-h-full max-w-full items-center justify-center"><img src={url} alt={alt} className="max-h-[92dvh] max-w-[94vw] rounded-2xl object-contain shadow-2xl" /><button type="button" onClick={onClose} className="absolute right-2 top-2 rounded-full border border-white/20 bg-black/75 p-3 text-white shadow-xl" aria-label="Cerrar"><X size={24} /></button></div></div>;
 }
 
 function Modal({ title, subtitle, onClose, children, wide = false }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; wide?: boolean }) { return <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm sm:items-center sm:p-4"><div className={`flex max-h-[96dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-zinc-700 bg-zinc-900 shadow-2xl sm:rounded-3xl ${wide ? "max-w-6xl" : "max-w-2xl"}`}><header className="flex items-start justify-between border-b border-zinc-800 p-5"><div><h2 className="text-xl font-black">{title}</h2>{subtitle && <p className="mt-1 text-sm text-zinc-500">{subtitle}</p>}</div><button onClick={onClose} className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800"><X /></button></header><div className="overflow-y-auto p-5">{children}</div></div></div>; }

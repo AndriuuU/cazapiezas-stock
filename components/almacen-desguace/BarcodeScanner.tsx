@@ -6,7 +6,11 @@ import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser"
 
 type DetectedBarcode = { rawValue: string };
 type BarcodeDetectorInstance = { detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]> };
-type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
+type BarcodeDetectorConstructor = {
+  new (options?: { formats?: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats?: () => Promise<string[]>;
+};
+type ExtendedVideoCapabilities = MediaTrackCapabilities & { focusMode?: string[]; zoom?: { min: number; max: number } };
 
 export default function BarcodeScanner({ onScan, onClose, title = "Escanear referencia", description = "Busca la pieza mediante el código de barras.", manualPlaceholder = "Escanea o escribe la referencia", manualHint = "Los lectores físicos normalmente escriben el código y pulsan Enter automáticamente.", allowManualEntry = true }: { onScan: (value: string) => void; onClose: () => void; title?: string; description?: string; manualPlaceholder?: string; manualHint?: string; allowManualEntry?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -34,6 +38,19 @@ export default function BarcodeScanner({ onScan, onClose, title = "Escanear refe
     onScan(normalized);
   }
 
+  async function improveCamera(stream: MediaStream) {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    streamRef.current = stream;
+    try {
+      const capabilities = track.getCapabilities() as ExtendedVideoCapabilities;
+      const advanced: Record<string, unknown> = {};
+      if (capabilities.focusMode?.includes("continuous")) advanced.focusMode = "continuous";
+      if (capabilities.zoom && capabilities.zoom.max > capabilities.zoom.min) advanced.zoom = Math.min(capabilities.zoom.max, Math.max(capabilities.zoom.min, 1.15));
+      if (Object.keys(advanced).length) await track.applyConstraints({ advanced: [advanced] } as MediaTrackConstraints);
+    } catch { /* Algunos iPhone no permiten cambiar el enfoque manualmente. */ }
+  }
+
   async function startCamera() {
     setCameraStarting(true);
     setError("");
@@ -41,25 +58,30 @@ export default function BarcodeScanner({ onScan, onClose, title = "Escanear refe
       const Detector = (window as typeof window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
       const video = videoRef.current;
       if (!video) throw new Error("No se pudo iniciar la vista de la cámara.");
+      const videoConstraints = { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } };
       if (!Detector) {
         const reader = new BrowserMultiFormatReader();
-        controlsRef.current = await reader.decodeFromConstraints({ video: { facingMode: { ideal: "environment" } }, audio: false }, video, (result) => {
+        controlsRef.current = await reader.decodeFromConstraints({ video: videoConstraints, audio: false }, video, (result) => {
           if (result?.getText()) finish(result.getText());
         });
+        if (video.srcObject instanceof MediaStream) await improveCamera(video.srcObject);
         setCameraActive(true);
         scanningRef.current = true;
         return;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-      streamRef.current = stream;
+      const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+      await improveCamera(stream);
       video.srcObject = stream;
       await video.play();
       setCameraActive(true);
       scanningRef.current = true;
-      const detector = new Detector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "codabar", "qr_code"] });
+      const desiredFormats = ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e", "itf", "codabar"];
+      const supportedFormats = Detector.getSupportedFormats ? await Detector.getSupportedFormats() : desiredFormats;
+      const formats = desiredFormats.filter((format) => supportedFormats.includes(format));
+      const detector = new Detector(formats.length ? { formats } : undefined);
       const scanFrame = async (time: number) => {
         if (!scanningRef.current) return;
-        if (time - lastDetectionRef.current > 220 && video.readyState >= 2) {
+        if (time - lastDetectionRef.current > 140 && video.readyState >= 2) {
           lastDetectionRef.current = time;
           try {
             const results = await detector.detect(video);

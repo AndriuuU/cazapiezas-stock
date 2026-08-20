@@ -69,7 +69,9 @@ function LabelSizeSelect({ value, onChange }: { value: LabelSize; onChange: (val
 }
 
 async function makeQr(value: string) {
-  return QRCode.toDataURL(value, { width: 420, margin: 1, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#ffffff" } });
+  // Un borde blanco amplio y una matriz menos densa mejoran mucho la lectura
+  // con Safari/iPhone, especialmente en las etiquetas pequeñas.
+  return QRCode.toDataURL(value, { width: 420, margin: 4, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } });
 }
 
 function openPrint(html: string, destination: "browser" | "brother") {
