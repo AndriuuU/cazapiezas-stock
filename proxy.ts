@@ -63,7 +63,7 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next();
 
   if (token) {
-    response.cookies.set(sessionCookieName, token, getSessionCookieOptions());
+    response.cookies.set(sessionCookieName, token, getSessionCookieOptions(user.rol));
   }
 
   return response;

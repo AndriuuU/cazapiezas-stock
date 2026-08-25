@@ -54,6 +54,13 @@ export interface HerramientaComun {
   retirada_at: string | null;
   created_at: string;
   updated_at: string;
+  archivada: boolean;
+  archivada_at: string | null;
+  archivada_por: string | null;
+  motivo_archivo: string | null;
+  incidencia_abierta_tipo: TipoIncidenciaHerramienta | null;
+  incidencia_abierta_detalle: string | null;
+  incidencia_abierta_at: string | null;
   estanteria?: EstanteriaHerramientas | null;
   fotos?: FotoHerramientaComun[];
 }
@@ -61,11 +68,16 @@ export interface HerramientaComun {
 export interface MovimientoHerramienta {
   id: number;
   herramienta_id: number;
-  tipo: "alta" | "retirada" | "devolucion" | "cambio_estado" | "cambio_ubicacion";
+  tipo: "alta" | "retirada" | "devolucion" | "cambio_estado" | "cambio_ubicacion" | "edicion" | "foto" | "incidencia" | "incidencia_resuelta" | "archivo" | "restauracion";
   empleado: string | null;
   vehiculo: string | null;
   estado_anterior: EstadoHerramienta | null;
   estado_nuevo: EstadoHerramienta;
   detalle: string | null;
+  incidencia_tipo: TipoIncidenciaHerramienta | null;
+  foto_url: string | null;
+  storage_path: string | null;
   created_at: string;
 }
+
+export type TipoIncidenciaHerramienta = "falta_pieza" | "danada" | "revision";

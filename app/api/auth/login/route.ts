@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       }
       const token = await createSessionToken({ id: user.id, nombre: user.nombre, rol: user.rol });
       const response = NextResponse.json({ ok: true, user: { id: user.id, nombre: user.nombre, rol: user.rol } });
-      response.cookies.set(sessionCookieName, token, getSessionCookieOptions());
+      response.cookies.set(sessionCookieName, token, getSessionCookieOptions(user.rol));
       return response;
     } catch { return NextResponse.json({ error: "No se pudo comprobar el usuario." }, { status: 503 }); }
   }
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   const token = await createSessionToken();
   const response = NextResponse.json({ ok: true });
 
-  response.cookies.set(sessionCookieName, token, getSessionCookieOptions());
+  response.cookies.set(sessionCookieName, token, getSessionCookieOptions("administrador"));
 
   return response;
 }

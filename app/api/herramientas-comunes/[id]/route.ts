@@ -5,7 +5,7 @@ import { DEFAULT_TOOL_SETTINGS, normalizeToolSettings } from "@/lib/app-settings
 import { shelfPositionExists } from "@/lib/herramientas-comunes";
 import { protectApiRequest } from "@/lib/request-security";
 import { getSupabaseApiConfig, parseSupabaseResponse, supabaseHeaders } from "@/lib/supabase-rest";
-import type { EstadoHerramienta, EstanteriaHerramientas, HerramientaComun } from "@/types/herramientas-comunes";
+import type { EstadoHerramienta, EstanteriaHerramientas, HerramientaComun, TipoIncidenciaHerramienta } from "@/types/herramientas-comunes";
 
 type Context = { params: Promise<{ id: string }> };
 const STATES: EstadoHerramienta[] = ["disponible", "prestada", "perdida"];
@@ -17,10 +17,10 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "Herramienta no válida." }, { status: 400 });
-    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown; solo_localizacion?: unknown; espacio_ocupado?: unknown };
+    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; incidencia_tipo?: TipoIncidenciaHerramienta | null; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown; solo_localizacion?: unknown; espacio_ocupado?: unknown };
     const signedUser = await getRequestUser(request);
     if (!signedUser) return NextResponse.json({ error: "Inicia sesión para continuar." }, { status: 401 });
-    if (body.action === "editar" && signedUser.rol !== "administrador") return NextResponse.json({ error: "Esta acción necesita permisos de administrador." }, { status: 403 });
+    if (["editar", "archivar", "restaurar", "resolver_incidencia"].includes(body.action || "") && signedUser.rol !== "administrador") return NextResponse.json({ error: "Esta acción necesita permisos de administrador." }, { status: 403 });
     const { url, key } = getSupabaseApiConfig();
     const select = new URLSearchParams({ select: "*", id: `eq.${id}`, limit: "1" });
     const currentResponse = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?${select}`, { headers: supabaseHeaders(key) });
@@ -34,11 +34,13 @@ export async function PATCH(request: Request, context: Context) {
       settings = normalizeToolSettings(row?.valor);
     }
 
-    const actor = body.action === "retirar" ? await resolveActionActor(request, body.actor_user_id) : signedUser;
-    if (!actor) return NextResponse.json({ error: "Selecciona el empleado que retira la herramienta." }, { status: 400 });
+    const actor = body.action === "retirar" || body.action === "devolver" ? await resolveActionActor(request, body.actor_user_id) : signedUser;
+    if (!actor) return NextResponse.json({ error: "Selecciona el empleado que realiza la acción." }, { status: 400 });
     const employee = clean(actor.nombre, 100);
     const vehicle = clean(body.vehiculo, 120) || null;
     if (body.action === "retirar" && current.solo_localizacion) return NextResponse.json({ error: "Este material es solo para localizar y no se puede retirar." }, { status: 409 });
+    if (body.action === "retirar" && current.incidencia_abierta_tipo) return NextResponse.json({ error: "Resuelve primero la incidencia abierta de esta herramienta." }, { status: 409 });
+    if (body.action === "retirar" && current.archivada) return NextResponse.json({ error: "La herramienta está archivada." }, { status: 409 });
     if (body.action === "retirar" && (!current.estanteria_id || !current.nivel || !current.posicion)) return NextResponse.json({ error: "Coloca primero la herramienta en una ubicación antes de retirarla." }, { status: 409 });
     if (body.action === "retirar" && settings.requireVehicleOnLoan && !vehicle) return NextResponse.json({ error: "Indica el vehículo antes de retirar la herramienta." }, { status: 400 });
     if (body.action === "devolver" && settings.requireLocationScanOnReturn) {
@@ -46,7 +48,45 @@ export async function PATCH(request: Request, context: Context) {
       if (confirmedShelf !== current.estanteria_id || confirmedLevel !== current.nivel || confirmedPosition.toUpperCase() !== clean(current.posicion, 80).toUpperCase()) return NextResponse.json({ error: "Escanea el QR de la ubicación correcta antes de devolverla." }, { status: 400 });
     }
     if (body.action === "estado" && body.estado === "perdida" && signedUser.rol !== "administrador" && !settings.employeesCanMarkMissing) return NextResponse.json({ error: "Solo un administrador puede marcar herramientas no localizadas." }, { status: 403 });
-    if (body.action === "retirar" || body.action === "devolver" || body.action === "estado") {
+    if (body.action === "devolver") {
+      const incidentType = body.incidencia_tipo || null;
+      const incidentDetail = clean(body.detalle, 500) || null;
+      if (incidentType && !["falta_pieza", "danada", "revision"].includes(incidentType)) return NextResponse.json({ error: "Tipo de incidencia no válido." }, { status: 400 });
+      if (incidentType && !settings.allowReturnIncidents) return NextResponse.json({ error: "El registro de incidencias al devolver está desactivado." }, { status: 403 });
+      if (incidentType && settings.requireIncidentComment && !incidentDetail) return NextResponse.json({ error: "Escribe un comentario para registrar la incidencia." }, { status: 400 });
+      const rpcResponse = await fetch(`${url}/rest/v1/rpc/herramientas_comunes_devolver_con_incidencia`, {
+        method: "POST", headers: supabaseHeaders(key), body: JSON.stringify({ p_herramienta_id: Number(id), p_empleado: employee, p_incidencia_tipo: incidentType, p_incidencia_detalle: incidentDetail }),
+      });
+      if (!rpcResponse.ok) {
+        const payload = await rpcResponse.json().catch(() => null) as { message?: string; error?: string; code?: string } | null;
+        const missingUpdate = rpcResponse.status === 404 || payload?.code === "PGRST202";
+        return NextResponse.json({ error: missingUpdate ? "Falta aplicar la actualización 202608240001_control_herramientas_comunes.sql." : payload?.message || payload?.error || "No se pudo registrar la devolución." }, { status: missingUpdate ? 503 : 409 });
+      }
+      return NextResponse.json(await rpcResponse.json());
+    }
+    if (body.action === "archivar" || body.action === "restaurar") {
+      const rpcResponse = await fetch(`${url}/rest/v1/rpc/herramientas_comunes_archivar`, {
+        method: "POST", headers: supabaseHeaders(key), body: JSON.stringify({ p_herramienta_id: Number(id), p_archivar: body.action === "archivar", p_empleado: employee, p_motivo: clean(body.detalle, 500) || null }),
+      });
+      if (!rpcResponse.ok) {
+        const payload = await rpcResponse.json().catch(() => null) as { message?: string; error?: string } | null;
+        return NextResponse.json({ error: payload?.message || payload?.error || "No se pudo cambiar el archivo de la herramienta." }, { status: rpcResponse.status === 404 ? 503 : 409 });
+      }
+      const payload = await rpcResponse.json() as HerramientaComun | HerramientaComun[];
+      return NextResponse.json(Array.isArray(payload) ? payload[0] : payload);
+    }
+    if (body.action === "resolver_incidencia") {
+      const rpcResponse = await fetch(`${url}/rest/v1/rpc/herramientas_comunes_resolver_incidencia`, {
+        method: "POST", headers: supabaseHeaders(key), body: JSON.stringify({ p_herramienta_id: Number(id), p_empleado: employee, p_detalle: clean(body.detalle, 500) || null }),
+      });
+      if (!rpcResponse.ok) {
+        const payload = await rpcResponse.json().catch(() => null) as { message?: string; error?: string } | null;
+        return NextResponse.json({ error: payload?.message || payload?.error || "No se pudo resolver la incidencia." }, { status: rpcResponse.status === 404 ? 503 : 409 });
+      }
+      const payload = await rpcResponse.json() as HerramientaComun | HerramientaComun[];
+      return NextResponse.json(Array.isArray(payload) ? payload[0] : payload);
+    }
+    if (body.action === "retirar" || body.action === "estado") {
       const rpcResponse = await fetch(`${url}/rest/v1/rpc/herramientas_comunes_cambiar_estado`, {
         method: "POST",
         headers: supabaseHeaders(key),
@@ -63,7 +103,7 @@ export async function PATCH(request: Request, context: Context) {
     }
     let nextState: EstadoHerramienta;
     let patch: Record<string, unknown>;
-    let type: "retirada" | "devolucion" | "cambio_estado" | "cambio_ubicacion" | null;
+    let type: "retirada" | "devolucion" | "cambio_estado" | "cambio_ubicacion" | "edicion" | null;
     if (body.action === "retirar") {
       if (current.estado !== "disponible") return NextResponse.json({ error: "La herramienta ya no está disponible." }, { status: 409 });
       if (!employee) return NextResponse.json({ error: "Selecciona el empleado que la retira." }, { status: 400 });
@@ -96,7 +136,8 @@ export async function PATCH(request: Request, context: Context) {
       const onlyLocation = body.solo_localizacion === true || body.solo_localizacion === "true" || body.solo_localizacion === "on";
       if (onlyLocation && current.estado === "prestada") return NextResponse.json({ error: "Devuelve primero la herramienta antes de marcarla como solo localización." }, { status: 409 });
       patch = { nombre: name, categoria: clean(body.categoria, 100) || null, marca: clean(body.marca, 100) || null, descripcion: clean(body.descripcion, 500) || null, solo_localizacion: onlyLocation, espacio_ocupado: clean(body.espacio_ocupado, 150) || null };
-      type = null;
+      type = "edicion";
+      body.detalle = "Datos generales de la herramienta actualizados.";
     } else {
       return NextResponse.json({ error: "Acción no válida." }, { status: 400 });
     }
