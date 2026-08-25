@@ -2,6 +2,10 @@ import type { AppUser } from "@/lib/app-users";
 
 const SESSION_COOKIE_NAME = "cazapiezas_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+// Los navegadores limitan la duración de una cookie persistente. Al renovarla
+// en cada petición, 400 días equivalen a una sesión de administrador permanente
+// mientras la aplicación siga utilizándose.
+const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;
 const SESSION_VERSION = "v3";
 
 export const sessionCookieName = SESSION_COOKIE_NAME;
@@ -77,8 +81,10 @@ export function isValidLoginPassword(password: string) {
 }
 
 export async function createSessionToken(user: AppUser = { id: "legacy-admin", nombre: "Administrador", rol: "administrador" }, now = Date.now()) {
-  const expiresAt = now + SESSION_MAX_AGE_SECONDS * 1000;
-  const encodedPayload = encodeText(JSON.stringify({ exp: expiresAt, uid: user.id, name: user.nombre, role: user.rol }));
+  const sessionPayload = user.rol === "administrador"
+    ? { uid: user.id, name: user.nombre, role: user.rol }
+    : { exp: now + SESSION_MAX_AGE_SECONDS * 1000, uid: user.id, name: user.nombre, role: user.rol };
+  const encodedPayload = encodeText(JSON.stringify(sessionPayload));
   const payload = `${SESSION_VERSION}.${encodedPayload}`;
   const signature = await sign(payload);
 
@@ -105,7 +111,8 @@ export async function getSessionFromToken(token?: string): Promise<AppUser | nul
 
   try {
     const payload = JSON.parse(decodeText(payloadValue)) as { exp?: number; uid?: string; name?: string; role?: string };
-    if (!payload.exp || Date.now() > payload.exp || !payload.uid || !payload.name || (payload.role !== "administrador" && payload.role !== "empleado")) return null;
+    if (!payload.uid || !payload.name || (payload.role !== "administrador" && payload.role !== "empleado")) return null;
+    if (payload.role === "empleado" && (!payload.exp || Date.now() > payload.exp)) return null;
     return { id: payload.uid, nombre: payload.name, rol: payload.role };
   } catch { return null; }
 }
@@ -130,12 +137,13 @@ function decodeText(value: string) {
   return new TextDecoder().decode(Uint8Array.from(atob(normalized + "=".repeat((4 - normalized.length % 4) % 4)), (character) => character.charCodeAt(0)));
 }
 
-export function getSessionCookieOptions() {
+export function getSessionCookieOptions(role: AppUser["rol"] = "empleado") {
   return {
     httpOnly: true,
-    maxAge: SESSION_MAX_AGE_SECONDS,
+    maxAge: role === "administrador" ? ADMIN_SESSION_MAX_AGE_SECONDS : SESSION_MAX_AGE_SECONDS,
     path: "/",
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
+    priority: "high" as const,
   };
 }

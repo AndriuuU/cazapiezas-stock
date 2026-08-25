@@ -5,6 +5,7 @@ import axios from "axios";
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Barcode,
   Check,
@@ -32,6 +33,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import Logo from "@/components/Logo";
 import { createInternalEan13 } from "@/lib/barcodes";
 import {
@@ -1275,13 +1277,22 @@ export default function AdminPanel() {
               </p>
             </div>
           </div>
-          <button
-            onClick={fetchAdjustments}
-            className="p-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl transition-all border border-zinc-700 flex items-center gap-2 self-start md:self-auto"
-          >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-            Actualizar
-          </button>
+          <div className="flex flex-wrap gap-2 self-start md:self-auto">
+            <Link
+              href="/"
+              className="flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
+            >
+              <ArrowLeft size={18} />
+              Volver
+            </Link>
+            <button
+              onClick={fetchAdjustments}
+              className="flex min-h-11 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 transition-all hover:bg-zinc-700"
+            >
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+              Actualizar
+            </button>
+          </div>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-2">
