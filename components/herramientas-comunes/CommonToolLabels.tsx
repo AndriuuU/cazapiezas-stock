@@ -15,35 +15,39 @@ const LABEL_SIZE_OPTIONS: Array<{ value: LabelSize; label: string }> = [
 ];
 
 export function ToolQrLabelButton({ tool, compact = false }: { tool: HerramientaComun; compact?: boolean }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"qr" | "name" | "browser" | null>(null);
   const [size, setSize] = useState<LabelSize>("standard");
   if (!tool.qr_token) return <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">Falta activar los QR permanentes en la base de datos.</p>;
   async function print(destination: "browser" | "brother") {
-    setBusy(true);
+    setBusy(destination === "brother" ? "qr" : "browser");
     try {
       const url = `${window.location.origin}${buildToolQrPath(tool.qr_token, tool.codigo)}`;
       const qr = await makeQr(url);
       const html = documentHtml(toolLabel(tool, qr, size), size);
       openPrint(html, destination);
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo generar la etiqueta."); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   }
   async function printNameAndCode() {
-    setBusy(true);
+    setBusy("name");
     try {
       openPrint(nameAndCodeDocument(tool), "brother");
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo generar la etiqueta con el nombre."); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   }
-  const classes = compact ? "action" : "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-cyan-500/30 px-4 font-bold text-cyan-200";
-  return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} /><button type="button" disabled={busy} onClick={() => void print("brother")} className={classes}>{busy ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} Etiqueta QR</button><button type="button" disabled={busy} onClick={() => void printNameAndCode()} className={classes}><Printer size={16} /> Nombre + código · pequeña</button>{!compact && <button type="button" disabled={busy} onClick={() => void print("browser")} className={classes}><Printer size={16} /> PDF / otra impresora</button>}</div>;
+  if (compact) return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} compact /><button type="button" disabled={Boolean(busy)} onClick={() => void print("brother")} className="action action-primary">{busy === "qr" ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} Imprimir QR</button></div>;
+  return <div className="space-y-2.5">
+    <LabelSizeSelect value={size} onChange={setSize} />
+    <button type="button" disabled={Boolean(busy)} onClick={() => void print("brother")} className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 font-black text-zinc-950 disabled:opacity-50">{busy === "qr" ? <><Loader2 className="animate-spin" size={19} /> Preparando etiqueta…</> : <><QrCode size={19} /> Imprimir etiqueta QR</>}</button>
+    <details className="group"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-zinc-700 text-sm font-bold text-zinc-400 active:bg-zinc-800"><Printer size={16} /> Otras opciones <span className="transition group-open:rotate-180">⌄</span></summary><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => void printNameAndCode()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-zinc-700 px-2 text-center text-xs font-bold text-zinc-300 disabled:opacity-50">{busy === "name" ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />} Solo nombre y código</button><button type="button" disabled={Boolean(busy)} onClick={() => void print("browser")} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-zinc-700 px-2 text-center text-xs font-bold text-zinc-300 disabled:opacity-50">{busy === "browser" ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />} PDF u otra impresora</button></div></details>
+  </div>;
 }
 
 export function ShelfLocationLabelsButton({ shelf, compact = false }: { shelf: EstanteriaHerramientas; compact?: boolean }) {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"qr" | "browser" | "a4" | null>(null);
   const [size, setSize] = useState<LabelSize>("standard");
   async function print(destination: "browser" | "brother") {
-    setBusy(true);
+    setBusy(destination === "brother" ? "qr" : "browser");
     try {
       const labels = await Promise.all(shelf.configuracion.filas.flatMap((row) => Array.from({ length: row.columnas }, async (_, index) => {
         const position = `C${index + 1}`;
@@ -53,10 +57,10 @@ export function ShelfLocationLabelsButton({ shelf, compact = false }: { shelf: E
       })));
       openPrint(documentHtml(labels.join(""), size), destination);
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudieron generar las etiquetas."); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   }
   async function printA4() {
-    setBusy(true);
+    setBusy("a4");
     try {
       const locations = await Promise.all(shelf.configuracion.filas.flatMap((row) => Array.from({ length: row.columnas }, async (_, index) => {
         const position = `C${index + 1}`;
@@ -65,14 +69,18 @@ export function ShelfLocationLabelsButton({ shelf, compact = false }: { shelf: E
       })));
       openPrint(a4ShelfDocument(shelf, locations), "browser");
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo preparar el folio A4."); }
-    finally { setBusy(false); }
+    finally { setBusy(null); }
   }
-  const classes = compact ? "action" : "inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-amber-500/30 px-4 font-bold text-amber-200";
-  return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} /><button type="button" disabled={busy} onClick={() => void print("brother")} className={classes}>{busy ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} QR de todos los huecos</button>{!compact && <button type="button" disabled={busy} onClick={() => void print("browser")} className={classes}><Printer size={16} /> Etiquetas individuales</button>}<button type="button" disabled={busy} onClick={() => void printA4()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 font-bold text-violet-200"><Printer size={16} /> Folio A4 para la puerta</button></div>;
+  if (compact) return <div className="flex flex-wrap gap-2"><LabelSizeSelect value={size} onChange={setSize} compact /><button type="button" disabled={Boolean(busy)} onClick={() => void print("brother")} className="action action-primary">{busy === "qr" ? <Loader2 className="animate-spin" size={16} /> : <QrCode size={16} />} Imprimir huecos</button></div>;
+  return <div className="space-y-2.5">
+    <LabelSizeSelect value={size} onChange={setSize} />
+    <button type="button" disabled={Boolean(busy)} onClick={() => void print("brother")} className="inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 font-black text-zinc-950 disabled:opacity-50">{busy === "qr" ? <><Loader2 className="animate-spin" size={19} /> Preparando etiquetas…</> : <><QrCode size={19} /> Imprimir QR de todos los huecos</>}</button>
+    <details className="group"><summary className="flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-zinc-700 text-sm font-bold text-zinc-400 active:bg-zinc-800"><Printer size={16} /> Otras opciones <span className="transition group-open:rotate-180">⌄</span></summary><div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => void print("browser")} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-zinc-700 px-2 text-center text-xs font-bold text-zinc-300 disabled:opacity-50">{busy === "browser" ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />} Etiquetas individuales</button><button type="button" disabled={Boolean(busy)} onClick={() => void printA4()} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-zinc-700 px-2 text-center text-xs font-bold text-zinc-300 disabled:opacity-50">{busy === "a4" ? <Loader2 className="animate-spin" size={16} /> : <Printer size={16} />} Folio A4 para la puerta</button></div></details>
+  </div>;
 }
 
-function LabelSizeSelect({ value, onChange }: { value: LabelSize; onChange: (value: LabelSize) => void }) {
-  return <label className="min-w-48"><span className="sr-only">Tamaño de la etiqueta</span><select value={value} onChange={(event) => onChange(event.target.value as LabelSize)} className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-zinc-200 outline-none focus:border-cyan-400">{LABEL_SIZE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+function LabelSizeSelect({ value, onChange, compact = false }: { value: LabelSize; onChange: (value: LabelSize) => void; compact?: boolean }) {
+  return <label className={compact ? "min-w-48" : "block w-full"}><span className={compact ? "sr-only" : "mb-1.5 block text-xs font-black uppercase tracking-wide text-zinc-500"}>Tamaño de etiqueta</span><select value={value} onChange={(event) => onChange(event.target.value as LabelSize)} className="h-12 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-bold text-zinc-200 outline-none focus:border-cyan-400">{LABEL_SIZE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
 }
 
 async function makeQr(value: string) {
