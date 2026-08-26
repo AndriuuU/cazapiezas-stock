@@ -43,6 +43,12 @@ export async function PATCH(request: Request, context: Context) {
     if (body.action === "retirar" && current.archivada) return NextResponse.json({ error: "La herramienta está archivada." }, { status: 409 });
     if (body.action === "retirar" && (!current.estanteria_id || !current.nivel || !current.posicion)) return NextResponse.json({ error: "Coloca primero la herramienta en una ubicación antes de retirarla." }, { status: 409 });
     if (body.action === "retirar" && settings.requireVehicleOnLoan && !vehicle) return NextResponse.json({ error: "Indica el vehículo antes de retirar la herramienta." }, { status: 400 });
+    if (body.action === "retirar") {
+      const activeLoansParams = new URLSearchParams({ select: "id", estado: "eq.prestada", empleado_actual: `eq.${employee}`, limit: "3" });
+      const activeLoansResponse = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?${activeLoansParams}`, { headers: supabaseHeaders(key), cache: "no-store" });
+      const activeLoans = await parseSupabaseResponse<Array<{ id: number }>>(activeLoansResponse);
+      if (activeLoans.length >= 3) return NextResponse.json({ error: `${employee} ya tiene 3 herramientas retiradas. Debe devolver una antes de coger otra.` }, { status: 409 });
+    }
     if (body.action === "devolver" && settings.requireLocationScanOnReturn) {
       const confirmedShelf = Number(body.estanteria_id); const confirmedLevel = Number(body.nivel); const confirmedPosition = clean(body.posicion, 80);
       if (confirmedShelf !== current.estanteria_id || confirmedLevel !== current.nivel || confirmedPosition.toUpperCase() !== clean(current.posicion, 80).toUpperCase()) return NextResponse.json({ error: "Escanea el QR de la ubicación correcta antes de devolverla." }, { status: 400 });
