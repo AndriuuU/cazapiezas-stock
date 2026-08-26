@@ -2,7 +2,11 @@ import axios from "axios";
 import { NextResponse } from "next/server";
 import { createInternalEan13 } from "@/lib/barcodes";
 import { protectApiRequest } from "@/lib/request-security";
-import { getSupabaseRestConfig } from "@/lib/supabase";
+import {
+  getSupabaseApiConfig,
+  parseSupabaseResponse,
+  supabaseHeaders,
+} from "@/lib/supabase-rest";
 
 const tallergpClient = axios.create({
   baseURL: process.env.TALLERGP_URL,
@@ -161,7 +165,7 @@ async function registerAdminStockAdjustment(material: {
   quantity_before: number;
   quantity_after: number;
 }) {
-  const { url, anonKey } = getSupabaseRestConfig();
+  const { url, key } = getSupabaseApiConfig();
   const difference = material.quantity_after - material.quantity_before;
 
   if (difference === 0) {
@@ -171,9 +175,7 @@ async function registerAdminStockAdjustment(material: {
   const response = await fetch(`${url}/rest/v1/stock_adjustments?select=*`, {
     method: "POST",
     headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      "Content-Type": "application/json",
+      ...supabaseHeaders(key),
       Prefer: "return=representation",
     },
     body: JSON.stringify({
@@ -188,8 +190,7 @@ async function registerAdminStockAdjustment(material: {
   });
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.message || `Supabase error ${response.status}`);
+    await parseSupabaseResponse(response);
   }
 
   return response.json();
@@ -203,15 +204,13 @@ async function registerProductCreatedEvent(material: {
   barcode?: string;
   snapshot?: ProductSnapshot;
 }) {
-  const { url, anonKey } = getSupabaseRestConfig();
+  const { url, key } = getSupabaseApiConfig();
 
   const insertEvent = async (status: string, name: string) => {
     const response = await fetch(`${url}/rest/v1/stock_adjustments?select=*`, {
       method: "POST",
       headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        "Content-Type": "application/json",
+        ...supabaseHeaders(key),
         Prefer: "return=representation",
       },
       body: JSON.stringify({
@@ -226,8 +225,7 @@ async function registerProductCreatedEvent(material: {
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => null);
-      throw new Error(errorBody?.message || `Supabase error ${response.status}`);
+      await parseSupabaseResponse(response);
     }
 
     return response.json();

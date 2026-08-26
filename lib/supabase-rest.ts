@@ -1,8 +1,15 @@
 import { getSupabaseRestConfig } from "@/lib/supabase";
 
 export function getSupabaseApiConfig() {
-  const { url, anonKey } = getSupabaseRestConfig();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || anonKey;
+  const { url } = getSupabaseRestConfig();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!key) {
+    throw new Error(
+      "Falta SUPABASE_SERVICE_ROLE_KEY en el entorno privado del servidor",
+    );
+  }
+
   return { url, key };
 }
 

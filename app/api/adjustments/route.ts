@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import axios from "axios";
 import { protectApiRequest } from "@/lib/request-security";
 import { resolveActionActor } from "@/lib/action-actor";
+import {
+  getSupabaseApiConfig,
+  parseSupabaseResponse,
+  supabaseHeaders,
+} from "@/lib/supabase-rest";
 
 interface StockAdjustment {
   id?: string;
@@ -64,36 +69,14 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Error desconocido";
 }
 
-function getSupabaseConfig() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key =
-    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    throw new Error("Faltan las variables de entorno de Supabase");
-  }
-
-  return { url, key };
-}
-
 async function requestSupabase<T>(path: string, init: RequestInit = {}) {
-  const { url, key } = getSupabaseConfig();
+  const { url, key } = getSupabaseApiConfig();
   const response = await fetch(`${url}/rest/v1/${path}`, {
     ...init,
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
+    headers: supabaseHeaders(key, init.headers as Record<string, string>),
   });
 
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    throw new Error(errorBody?.message || `Supabase error ${response.status}`);
-  }
-
-  return (await response.json()) as T;
+  return parseSupabaseResponse<T>(response);
 }
 
 async function insertAdjustment(adjustment: StockAdjustment) {
