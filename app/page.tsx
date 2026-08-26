@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import axios from "axios";
-import { AlertCircle, BellRing, CheckCircle, KeyRound, List, Loader2, LogOut, PackagePlus, Search, Settings2, ShieldCheck, Warehouse, Wrench } from "lucide-react";
+import { AlertCircle, BellRing, CheckCircle, ChevronRight, KeyRound, List, Loader2, LogOut, PackagePlus, Search, Settings2, ShieldCheck, Warehouse, Wrench } from "lucide-react";
 import Link from "next/link";
 import CacheLoader from "@/components/CacheLoader";
 import Logo from "@/components/Logo";
@@ -361,29 +361,11 @@ export default function Home() {
                 Registrar producto
               </button>
               {currentUser?.rol === "administrador" && (
-                <Link
-                  href="/admin"
-                  className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/10 py-4 font-semibold text-red-300 transition-all hover:bg-red-500/15 active:scale-95 md:col-span-2"
-                >
-                  <ShieldCheck className="h-5 w-5" />
-                  Movimientos stock
-                </Link>
+                <HomeNavLink href="/admin" title="Movimientos stock" description="Historial y control del inventario" icon={<ShieldCheck />} tone="red" className="md:col-span-2" />
               )}
-              <Link
-                href="/almacen-desguace"
-                className="w-full min-h-14 py-4 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 rounded-2xl flex items-center justify-center gap-2 text-amber-300 font-semibold transition-all active:scale-95 md:col-span-2"
-              >
-                <Warehouse className="w-5 h-5" />
-                Almacén Desguace
-              </Link>
-              <Link
-                href="/herramientas-comunes"
-                className="w-full min-h-14 py-4 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/30 rounded-2xl flex items-center justify-center gap-2 text-cyan-300 font-semibold transition-all active:scale-95 md:col-span-2"
-              >
-                <Wrench className="w-5 h-5" />
-                Herramientas comunes
-              </Link>
-              {currentUser?.rol === "administrador" && <><Link href="/admin/usuarios" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-violet-500/30 bg-violet-500/10 py-4 font-semibold text-violet-300 transition-all active:scale-95"><ShieldCheck className="h-5 w-5" /> Usuarios y permisos</Link><Link href="/admin/configuracion" className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 py-4 font-semibold text-cyan-300 transition-all active:scale-95"><Settings2 className="h-5 w-5" /> Configuración</Link></>}
+              <HomeNavLink href="/almacen-desguace" title="Almacén Desguace" description="Piezas, ubicaciones y retiradas" icon={<Warehouse />} tone="amber" className="md:col-span-2" />
+              <HomeNavLink href="/herramientas-comunes" title="Herramientas comunes" description="Préstamos, devoluciones y estanterías" icon={<Wrench />} tone="cyan" className="md:col-span-2" />
+              {currentUser?.rol === "administrador" && <><HomeNavLink href="/admin/usuarios" title="Usuarios y permisos" description="Empleados, accesos y roles" icon={<ShieldCheck />} tone="violet" /><HomeNavLink href="/admin/configuracion" title="Configuración" description="Ajustes generales de la aplicación" icon={<Settings2 />} tone="cyan" /></>}
             </div>
           </>
         )}
@@ -456,4 +438,18 @@ export default function Home() {
       </div>
     </main>
   );
+}
+
+function HomeNavLink({ href, title, description, icon, tone, className = "" }: { href: string; title: string; description: string; icon: ReactNode; tone: "red" | "amber" | "cyan" | "violet"; className?: string }) {
+  const tones = {
+    red: { icon: "bg-red-500/10 text-red-300 ring-red-500/20", hover: "hover:border-red-500/40" },
+    amber: { icon: "bg-amber-500/10 text-amber-300 ring-amber-500/20", hover: "hover:border-amber-500/40" },
+    cyan: { icon: "bg-cyan-500/10 text-cyan-300 ring-cyan-500/20", hover: "hover:border-cyan-500/40" },
+    violet: { icon: "bg-violet-500/10 text-violet-300 ring-violet-500/20", hover: "hover:border-violet-500/40" },
+  }[tone];
+  return <Link href={href} className={`group flex min-h-20 w-full items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 text-left shadow-sm shadow-black/20 transition hover:bg-zinc-800/90 active:scale-[0.98] ${tones.hover} ${className}`}>
+    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ring-1 ring-inset [&>svg]:h-5 [&>svg]:w-5 ${tones.icon}`}>{icon}</span>
+    <span className="min-w-0 flex-1"><span className="block font-black text-white">{title}</span><span className="mt-0.5 block text-xs leading-4 text-zinc-500">{description}</span></span>
+    <ChevronRight className="shrink-0 text-zinc-600 transition group-hover:translate-x-0.5 group-hover:text-zinc-300" size={20} />
+  </Link>;
 }
