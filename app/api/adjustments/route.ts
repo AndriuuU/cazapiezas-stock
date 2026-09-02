@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import axios from "axios";
 import { protectApiRequest } from "@/lib/request-security";
 import { resolveActionActor } from "@/lib/action-actor";
+import { getRequestUser } from "@/lib/auth";
+import { STOCK_CORRECTION_ACTOR_ID, STOCK_CORRECTION_ACTOR_NAME } from "@/lib/stock-adjustment-actor";
 import {
   getSupabaseApiConfig,
   parseSupabaseResponse,
@@ -238,8 +240,10 @@ export async function POST(request: Request) {
     } = body;
     const nextQuantity = Number(quantity_after);
     const previousQuantity = Number(quantity_before);
-    const actor = await resolveActionActor(request, actor_user_id);
-    const employeeName = actor?.nombre.trim() || "";
+    const signedUser = await getRequestUser(request);
+    const isStockCorrection = actor_user_id === STOCK_CORRECTION_ACTOR_ID && signedUser?.rol === "administrador";
+    const actor = isStockCorrection ? null : await resolveActionActor(request, actor_user_id);
+    const employeeName = isStockCorrection ? STOCK_CORRECTION_ACTOR_NAME : actor?.nombre.trim() || "";
 
     if (!material_id || !Number.isFinite(nextQuantity) || nextQuantity < 0) {
       return NextResponse.json(
@@ -250,7 +254,7 @@ export async function POST(request: Request) {
 
     if (!employeeName) {
       return NextResponse.json(
-        { error: "Selecciona quién ha cogido o cambiado el material" },
+        { error: "Selecciona el responsable del ajuste de stock" },
         { status: 400 }
       );
     }
