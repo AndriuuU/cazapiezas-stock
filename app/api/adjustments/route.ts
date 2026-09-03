@@ -255,7 +255,7 @@ export async function POST(request: Request) {
 
     if (!employeeName) {
       return NextResponse.json(
-        { error: "Selecciona quién ha cogido o cambiado el material" },
+        { error: "Selecciona el responsable del ajuste de stock" },
         { status: 400 }
       );
     }
