@@ -1,6 +1,7 @@
 export type CommonToolsQrValue =
   | { kind: "tool"; code: string }
   | { kind: "tool-token"; token: string }
+  | { kind: "shelf"; shelfId: number }
   | { kind: "location"; shelfId: number; level: number; position: string }
   | { kind: "unknown"; value: string };
 
@@ -11,6 +12,10 @@ export function buildToolQrPath(qrToken: string | null | undefined, code: string
 
 export function buildLocationQrPath(shelfId: number, level: number, position: string) {
   return `/herramientas-comunes?ubicacion=${encodeURIComponent(`${shelfId}:${level}:${normalizePosition(position)}`)}`;
+}
+
+export function buildShelfViewPath(shelfId: number) {
+  return `/herramientas-comunes?estanteria=${encodeURIComponent(String(shelfId))}`;
 }
 
 export function buildLocationManualCode(shelfId: number, level: number, position: string) {
@@ -27,6 +32,8 @@ export function parseCommonToolsQr(rawValue: string, baseUrl = "https://cazapiez
     if (tool) return { kind: "tool", code: tool };
     const toolToken = url.searchParams.get("herramienta_qr")?.trim();
     if (toolToken) return { kind: "tool-token", token: toolToken };
+    const shelfId = url.searchParams.get("estanteria")?.trim();
+    if (shelfId && /^\d+$/.test(shelfId) && Number(shelfId) > 0) return { kind: "shelf", shelfId: Number(shelfId) };
     const location = url.searchParams.get("ubicacion");
     if (location) {
       const parsed = parseLocation(location);
