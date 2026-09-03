@@ -32,7 +32,6 @@ interface ProductCardProps {
 export default function ProductCard({ material, onClose, onSaved }: ProductCardProps) {
   const currentUser = useCurrentUser();
   const { users: actionUsers, loading: actionUsersLoading } = useActionActors(currentUser);
-  const selectableActionUsers = currentUser?.rol === "administrador" ? [{ id: STOCK_CORRECTION_ACTOR_ID, nombre: STOCK_CORRECTION_ACTOR_NAME, rol: "empleado" as const }, ...actionUsers] : actionUsers;
   const [editedQuantity, setEditedQuantity] = useState(material.quantity);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
