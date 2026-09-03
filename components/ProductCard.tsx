@@ -21,6 +21,7 @@ import { Material } from "@/types/material";
 import QuantityPanel from "./QuantityPanel";
 import { useCurrentUser } from "@/components/auth/useCurrentUser";
 import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
+import { STOCK_CORRECTION_ACTOR, STOCK_CORRECTION_ACTOR_ID } from "@/lib/stock-adjustment-actor";
 
 interface ProductCardProps {
   material: Material;
@@ -38,7 +39,7 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
   const [imageUrl, setImageUrl] = useState(material.photos?.[0]?.url || "");
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState("");
-  const [actorUserId, setActorUserId] = useState("");
+  const [actorUserId, setActorUserId] = useState(STOCK_CORRECTION_ACTOR_ID);
   const [saveSuccess, setSaveSuccess] = useState("");
 
   const quantityDifference = editedQuantity - material.quantity;
@@ -69,7 +70,7 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
       });
 
       updateMaterialQuantityInCache(material.material_id, editedQuantity);
-      const actorName = currentUser?.rol === "administrador" ? actionUsers.find((user) => user.id === actorUserId)?.nombre : currentUser?.nombre;
+      const actorName = currentUser?.rol === "administrador" ? [STOCK_CORRECTION_ACTOR, ...actionUsers].find((user) => user.id === actorUserId)?.nombre : currentUser?.nombre;
       const message = `Stock guardado en TallerGP por ${actorName || "el usuario conectado"}`;
       setSaveSuccess(message);
       onSaved?.(message);
@@ -182,7 +183,7 @@ export default function ProductCard({ material, onClose, onSaved }: ProductCardP
             onQuantityChange={setEditedQuantity}
           />
 
-          <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 p-4"><ActionActorSelect currentUser={currentUser} users={actionUsers} loading={actionUsersLoading} value={actorUserId} onChange={(id) => { setActorUserId(id); setSaveError(""); }} label="Quién ha cogido o cambiado el material" /></div>
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 p-4"><ActionActorSelect currentUser={currentUser} users={[STOCK_CORRECTION_ACTOR, ...actionUsers]} loading={actionUsersLoading} value={actorUserId} onChange={(id) => { setActorUserId(id); setSaveError(""); }} label="Quién ha cogido o cambiado el material" hint="Usa Corrección de STOCK para cuadrar una cantidad sin asignársela a ningún empleado." /></div>
 
           {saveError && (
             <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">

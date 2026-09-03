@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import axios from "axios";
 import { protectApiRequest } from "@/lib/request-security";
 import { resolveActionActor } from "@/lib/action-actor";
+import { getRequestUser } from "@/lib/auth";
+import { STOCK_CORRECTION_ACTOR, STOCK_CORRECTION_ACTOR_ID } from "@/lib/stock-adjustment-actor";
 import {
   getSupabaseApiConfig,
   parseSupabaseResponse,
@@ -238,7 +240,10 @@ export async function POST(request: Request) {
     } = body;
     const nextQuantity = Number(quantity_after);
     const previousQuantity = Number(quantity_before);
-    const actor = await resolveActionActor(request, actor_user_id);
+    const signedUser = await getRequestUser(request);
+    const actor = signedUser?.rol === "administrador" && actor_user_id === STOCK_CORRECTION_ACTOR_ID
+      ? STOCK_CORRECTION_ACTOR
+      : await resolveActionActor(request, actor_user_id);
     const employeeName = actor?.nombre.trim() || "";
 
     if (!material_id || !Number.isFinite(nextQuantity) || nextQuantity < 0) {
