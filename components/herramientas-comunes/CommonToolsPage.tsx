@@ -3,16 +3,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { AlertTriangle, Archive, ArrowDown, ArrowLeft, ArrowUp, Camera, CheckCircle2, ChevronRight, Clock3, Edit3, Grip, History, ImagePlus, LayoutGrid, List, Loader2, MapPin, MoreHorizontal, PackagePlus, Plus, QrCode, RotateCcw, ScanLine, Search, Settings, Trash2, UserRound, Wrench, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowDown, ArrowLeft, ArrowUp, Camera, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, Copy, Edit3, Grip, History, ImagePlus, LayoutGrid, List, Loader2, MapPin, MoreHorizontal, Nfc, PackagePlus, Plus, QrCode, RotateCcw, ScanLine, Search, Settings, Trash2, UserRound, Wrench, X } from "lucide-react";
 import BarcodeScanner from "@/components/almacen-desguace/BarcodeScanner";
 import { ShelfLocationLabelsButton, ToolQrLabelButton } from "@/components/herramientas-comunes/CommonToolLabels";
-import { parseCommonToolsQr } from "@/lib/herramientas-comunes-qr";
+import { buildToolQrPath, parseCommonToolsQr } from "@/lib/herramientas-comunes-qr";
 import { PHOTO_SOURCE_MAX_BYTES } from "@/lib/photo-upload";
 import { optimizePhoto } from "@/lib/photo-upload-client";
 import type { AppUser } from "@/lib/app-users";
 import { ActionActorSelect, useActionActors } from "@/components/auth/ActionActorSelect";
 import { DEFAULT_TOOL_SETTINGS, type ToolSettings } from "@/lib/app-settings";
-import type { ConfiguracionEstanteriaHerramientas, EstadoHerramienta, EstanteriaHerramientas, FilaEstanteriaHerramientas, HerramientaComun, MovimientoHerramienta, TipoIncidenciaHerramienta } from "@/types/herramientas-comunes";
+import type { ConfiguracionEstanteriaHerramientas, EstadoHerramienta, EstanteriaHerramientas, FilaEstanteriaHerramientas, HerramientaComun, InventarioHerramientaItem, InventarioHerramientas, MovimientoHerramienta, TipoIncidenciaHerramienta } from "@/types/herramientas-comunes";
 
 type Data = { shelves: EstanteriaHerramientas[]; tools: HerramientaComun[]; archivedTools: HerramientaComun[]; movements: MovimientoHerramienta[]; settings: ToolSettings };
 type ScannedLocation = { shelf: EstanteriaHerramientas; level: number; position: string };
@@ -61,6 +61,7 @@ export default function CommonToolsPage() {
   const [unlocatedOpen, setUnlocatedOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [labelTool, setLabelTool] = useState<HerramientaComun | null>(null);
+  const [nfcTool, setNfcTool] = useState<HerramientaComun | null>(null);
   const [archiveTool, setArchiveTool] = useState<HerramientaComun | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [incidentsOpen, setIncidentsOpen] = useState(false);
@@ -159,6 +160,15 @@ export default function CommonToolsPage() {
       if (isLoanAction) setLoanError(actionError);
     }
     finally { setBusyId(null); }
+  }
+
+  async function setIdentification(tool: HerramientaComun, identificacion: "qr" | "nfc", completado: boolean) {
+    const response = await fetch(`/api/herramientas-comunes/${tool.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "identificacion", identificacion, completado }) });
+    const payload = await response.json() as HerramientaComun & { error?: string };
+    if (!response.ok) throw new Error(payload.error || "No se pudo guardar el estado de la etiqueta.");
+    setData((current) => ({ ...current, tools: current.tools.map((item) => item.id === payload.id ? { ...item, ...payload } : item) }));
+    setNfcTool((current) => current?.id === payload.id ? { ...current, ...payload } : current);
+    return payload;
   }
 
   async function completeReturn(tool: HerramientaComun, draft: ReturnDraft, confirmedLocation?: { shelfId: number; level: number; position: string }) {
@@ -265,6 +275,7 @@ export default function CommonToolsPage() {
       {overdueTools.length > 0 && <section className="flex flex-wrap gap-2"><button onClick={() => { setView("prestamos"); setMobileTab("prestamos"); setQuery(""); }} className="inline-flex min-h-12 items-center gap-2 rounded-xl border border-red-500/35 bg-red-500/10 px-4 font-black text-red-200"><Clock3 size={18} />{overdueTools.length} préstamo{overdueTools.length === 1 ? "" : "s"} con retraso</button></section>}
       {error && <Notice tone="red">{error}</Notice>}{success && <Notice tone="green">{success}</Notice>}
       {setupRequired && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="font-black text-amber-200">Falta activar la última actualización</h2><p className="mt-2 text-sm leading-6 text-amber-100/75">Aplica en la base de datos la actualización <strong>202608190002_layout_estanterias_herramientas.sql</strong> para cargar el plano configurable de las seis estanterías.</p></section>}
+      {isAdmin && <div className="hidden justify-end sm:flex"><InventoryLauncher /></div>}
       <section className={`${mobileTab === "buscar" ? "block" : "hidden"} rounded-2xl border border-cyan-500/20 bg-zinc-900/95 p-3 shadow-2xl sm:block sm:p-4`}><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-400" size={21} /><input ref={searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="¿Qué herramienta buscas?" autoComplete="off" className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-4 pl-11 pr-11 text-base font-semibold outline-none focus:border-cyan-400 sm:py-3" />{searching && <button onClick={() => setQuery("")} aria-label="Limpiar búsqueda" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-zinc-400 hover:bg-zinc-800"><X size={18} /></button>}</label><button onClick={() => { setReturningTool(null); setScannerMode("general"); }} className="inline-flex min-h-14 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 font-black text-zinc-950 sm:min-h-0"><ScanLine size={21} /> Escanear QR</button></div>{searching && <p className="mt-2 px-1 text-xs font-bold text-cyan-300">{visible.length ? `${visible.length} resultado${visible.length === 1 ? "" : "s"} · ubicación mostrada en el plano` : "Sin resultados"}</p>}<div className="mt-3 hidden flex-wrap gap-2 sm:flex"><div className="grid grid-cols-3 rounded-xl border border-zinc-700 bg-zinc-950 p-1"><ViewButton active={view === "lista"} onClick={() => setView("lista")}><List size={17} /> Lista</ViewButton><ViewButton active={view === "prestamos"} onClick={() => setView("prestamos")}><UserRound size={17} /> Prestadas</ViewButton><ViewButton active={view === "estanterias"} onClick={() => setView("estanterias")}><LayoutGrid size={17} /> Plano</ViewButton></div><select value={status} onChange={(event) => setStatus(event.target.value as EstadoHerramienta | "")} className="min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm outline-none focus:border-cyan-500"><option value="">Todos los estados</option>{Object.entries(STATUS).filter(([value]) => value !== "reparacion").map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</select>{isAdmin && <><button onClick={() => setCreating(true)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-3 py-3 text-sm font-black text-zinc-950"><PackagePlus size={17} /> Registrar</button><button onClick={() => setManagingShelves(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 px-3 py-3 text-sm font-bold text-zinc-300"><Settings size={17} /> Configurar estanterías</button><button onClick={() => setLabelsOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/30 px-3 py-3 text-sm font-bold text-amber-200"><QrCode size={17} /> Etiquetas QR</button></>}<details className="relative ml-auto"><summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl border border-zinc-700 px-3 py-3 text-sm font-bold text-zinc-300"><MoreHorizontal size={17} /> Más{openIncidents.length > 0 && <span className="rounded-full bg-orange-400 px-2 py-0.5 text-xs font-black text-zinc-950">{openIncidents.length}</span>}</summary><div className="absolute right-0 top-full z-30 mt-2 min-w-64 space-y-2 rounded-xl border border-zinc-700 bg-zinc-950 p-2 shadow-2xl"><button onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setIncidentsOpen(true); }} className="flex min-h-12 w-full items-center justify-between gap-3 rounded-lg px-3 text-left font-bold text-orange-200 hover:bg-orange-500/10"><span className="flex items-center gap-2"><AlertTriangle size={18} /> Incidencias</span><span>{openIncidents.length}</span></button>{isAdmin && <button onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setArchivedOpen(true); }} className="flex min-h-12 w-full items-center justify-between gap-3 rounded-lg px-3 text-left font-bold text-zinc-300 hover:bg-zinc-800"><span className="flex items-center gap-2"><Archive size={18} /> Archivo</span><span>{data.archivedTools.length}</span></button>}</div></details></div></section>
       <div className="sm:hidden">{loading ? <Loading /> : mobileTab === "buscar" ? searching ? visible.length ? <SearchLocationResults tools={visible} shelves={data.shelves} onTool={setScannedTool} /> : <Empty text="No encontramos ninguna herramienta con ese nombre, código o marca." /> : <SearchPrompt /> : mobileTab === "lista" ? <div className="space-y-4"><ToolListFilters query={listQuery} category={listCategory} status={status} categories={categories} resultCount={listTools.length} totalCount={data.tools.length} onQuery={setListQuery} onCategory={setListCategory} onStatus={setStatus} onClear={() => { setListQuery(""); setListCategory(""); setStatus(""); }} />{listTools.length ? <ToolList tools={listTools} admin={isAdmin} busyId={busyId} onLoan={setLoanTool} onReturn={beginReturn} onStatus={(tool, next) => void action(tool, { action: "estado", estado: next }, `${tool.nombre} actualizada.`)} onHistory={setHistoryTool} onLocation={setLocationTool} onEdit={setEditingTool} onShowLocation={showLocation} /> : <Empty text="No hay herramientas que coincidan con estos filtros." />}</div> : mobileTab === "prestamos" ? <BorrowedToolsList tools={data.tools.filter((tool) => tool.estado === "prestada")} overdueHours={data.settings.loanOverdueHours} busyId={busyId} onReturn={beginReturn} onShowLocation={showLocation} /> : mobileTab === "plano" ? <ShelfView shelves={data.shelves} tools={data.tools} onTool={setScannedTool} /> : <MobileMore admin={isAdmin} missing={missing} unlocated={unlocatedTools.length} archived={data.archivedTools.length} incidents={openIncidents.length} onHistory={() => setGlobalHistoryOpen(true)} onMissing={showMissingTools} onUnlocated={() => setUnlocatedOpen(true)} onCreate={() => setCreating(true)} onShelves={() => setManagingShelves(true)} onLabels={() => setLabelsOpen(true)} onArchive={() => setArchivedOpen(true)} onIncidents={() => setIncidentsOpen(true)} />}</div>
       <div className="hidden sm:block">{loading ? <Loading /> : searching ? visible.length ? <SearchLocationResults tools={visible} shelves={data.shelves} onTool={setScannedTool} /> : <Empty text="No encontramos ninguna herramienta con ese nombre, código o marca." /> : view === "lista" ? <ToolList tools={visible} admin={isAdmin} busyId={busyId} onLoan={setLoanTool} onReturn={beginReturn} onStatus={(tool, next) => void action(tool, { action: "estado", estado: next }, `${tool.nombre} actualizada.`)} onHistory={setHistoryTool} onLocation={setLocationTool} onEdit={setEditingTool} onShowLocation={showLocation} /> : view === "prestamos" ? <BorrowedToolsList tools={data.tools.filter((tool) => tool.estado === "prestada")} overdueHours={data.settings.loanOverdueHours} busyId={busyId} onReturn={beginReturn} onShowLocation={showLocation} /> : <ShelfView shelves={data.shelves} tools={visible} onTool={setScannedTool} />}</div>
@@ -279,13 +290,14 @@ export default function CommonToolsPage() {
     {locationTool && <LocationModal tool={locationTool} shelves={data.shelves} busy={busyId === locationTool.id} onClose={() => setLocationTool(null)} onConfirm={(shelfId, level, position) => void action(locationTool, { action: "ubicacion", estanteria_id: shelfId, nivel: level, posicion: position }, `${locationTool.nombre} movida a su nueva ubicación.`)} />}
     {editingTool && <EditToolModal tool={editingTool} categories={categories} onClose={() => setEditingTool(null)} onSaved={async () => { const toolId = editingTool.id; setEditingTool(null); const refreshed = await load(); setLabelTool(refreshed?.tools.find((tool) => tool.id === toolId) || null); setSuccess("Herramienta actualizada correctamente."); }} />}
     {scannerMode && <BarcodeScanner allowManualEntry={scannerMode === "general" || data.settings.allowManualLocationCode} title={scannerMode === "return-location" ? "Escanear lugar de devolución" : scannerMode === "assign-location" ? "Escanear dónde la colocas" : "Escanear herramienta o ubicación"} description={scannerMode === "return-location" ? `Busca la etiqueta de ${location(returningTool!)}` : scannerMode === "assign-location" ? `Escanea el QR del hueco donde guardas ${placingTool?.nombre || "la herramienta"}.` : "Apunta al QR de una herramienta o de un hueco."} manualPlaceholder={scannerMode === "general" ? "Código de herramienta o ubicación" : "Ej. UB-5-N3-C2"} manualHint={scannerMode === "general" ? "También puedes escribir el código visible de la herramienta o ubicación." : "Si la cámara falla, escribe el código UB impreso junto al QR de la ubicación."} onScan={handleScan} onClose={() => { setScannerMode(null); if (scannerMode === "return-location") { setReturningTool(null); setPendingReturn(null); } if (scannerMode === "assign-location") setPlacingTool(null); }} />}
-    {scannedTool && <ScannedToolModal tool={scannedTool} busy={busyId === scannedTool.id} canReportMissing={isAdmin || data.settings.employeesCanMarkMissing} onClose={() => setScannedTool(null)} onLoan={() => { const tool = scannedTool; setScannedTool(null); setLoanTool(tool); }} onReturn={() => { const tool = scannedTool; setScannedTool(null); beginReturn(tool); }} onPlace={() => { const tool = scannedTool; setScannedTool(null); setPlacingTool(tool); setScannerMode("assign-location"); }} onChoosePlan={() => { const tool = scannedTool; setScannedTool(null); setPlanTool(tool); }} onShowLocation={() => { const tool = scannedTool; setScannedTool(null); showLocation(tool); }} onHistory={() => { const tool = scannedTool; setScannedTool(null); setHistoryTool(tool); }} onMove={() => { const tool = scannedTool; setScannedTool(null); setLocationTool(tool); }} onReportMissing={() => { const tool = scannedTool; setScannedTool(null); setReportTool(tool); }} onFound={() => { const tool = scannedTool; setScannedTool(null); void action(tool, { action: "estado", estado: "disponible", detalle: "Herramienta localizada de nuevo." }, `${tool.nombre} marcada como encontrada y disponible.`); }} />}
+    {scannedTool && <ScannedToolModal tool={scannedTool} busy={busyId === scannedTool.id} canManage={isAdmin} canReportMissing={isAdmin || data.settings.employeesCanMarkMissing} onClose={() => setScannedTool(null)} onLoan={() => { const tool = scannedTool; setScannedTool(null); setLoanTool(tool); }} onReturn={() => { const tool = scannedTool; setScannedTool(null); beginReturn(tool); }} onPlace={() => { const tool = scannedTool; setScannedTool(null); setPlacingTool(tool); setScannerMode("assign-location"); }} onChoosePlan={() => { const tool = scannedTool; setScannedTool(null); setPlanTool(tool); }} onShowLocation={() => { const tool = scannedTool; setScannedTool(null); showLocation(tool); }} onHistory={() => { const tool = scannedTool; setScannedTool(null); setHistoryTool(tool); }} onMove={() => { const tool = scannedTool; setScannedTool(null); setLocationTool(tool); }} onNfc={() => { const tool = scannedTool; setScannedTool(null); setNfcTool(tool); }} onReportMissing={() => { const tool = scannedTool; setScannedTool(null); setReportTool(tool); }} onFound={() => { const tool = scannedTool; setScannedTool(null); void action(tool, { action: "estado", estado: "disponible", detalle: "Herramienta localizada de nuevo." }, `${tool.nombre} marcada como encontrada y disponible.`); }} />}
     {reportTool && <ReportMissingModal tool={reportTool} busy={busyId === reportTool.id} onClose={() => setReportTool(null)} onConfirm={() => { const tool = reportTool; setReportTool(null); void action(tool, { action: "estado", estado: "perdida", detalle: "Se ha reportado que la herramienta no está en la ubicación indicada." }, `${tool.nombre} reportada como no encontrada.`); }} />}
     {planTool && <PlaceToolPlanModal tool={planTool} shelves={data.shelves} busy={busyId === planTool.id} onClose={() => setPlanTool(null)} onConfirm={(shelf, level, position) => { const tool = planTool; setPlanTool(null); void action(tool, { action: "ubicacion", estanteria_id: shelf.id, nivel: level, posicion: position }, `${tool.nombre} colocada en ${locationName(shelf, level, position)}.`); }} />}
     {unlocatedOpen && <UnlocatedToolsModal tools={unlocatedTools} onClose={() => setUnlocatedOpen(false)} onScan={(tool) => { setUnlocatedOpen(false); setPlacingTool(tool); setScannerMode("assign-location"); }} onPlan={(tool) => { setUnlocatedOpen(false); setPlanTool(tool); }} />}
     {scannedLocation && <ScannedLocationModal value={scannedLocation} tools={data.tools.filter((tool) => tool.estanteria_id === scannedLocation.shelf.id && tool.nivel === scannedLocation.level && normalizePosition(tool.posicion) === scannedLocation.position)} returningTool={returningTool} onClose={() => { setScannedLocation(null); setReturningTool(null); setPendingReturn(null); }} onRetry={() => { setScannedLocation(null); setScannerMode("return-location"); }} />}
-    {labelsOpen && <LabelsModal tools={data.tools} shelves={data.shelves} onClose={() => setLabelsOpen(false)} />}
-    {labelTool && <ToolLabelAfterSaveModal tool={labelTool} onClose={() => setLabelTool(null)} />}
+    {labelsOpen && <LabelsModal tools={data.tools} shelves={data.shelves} onClose={() => setLabelsOpen(false)} onPrinted={(tool) => setIdentification(tool, "qr", true)} onReset={(tool, kind) => setIdentification(tool, kind, false)} onNfc={setNfcTool} />}
+    {labelTool && <ToolLabelAfterSaveModal tool={labelTool} onClose={() => setLabelTool(null)} onPrinted={(tool) => setIdentification(tool, "qr", true)} onNfc={() => { const tool = labelTool; setLabelTool(null); setNfcTool(tool); }} />}
+    {nfcTool && <NfcToolModal tool={nfcTool} onClose={() => setNfcTool(null)} onStatus={(completed) => setIdentification(nfcTool, "nfc", completed)} />}
     {archiveTool && <ArchiveToolModal tool={archiveTool} busy={busyId === archiveTool.id} onClose={() => setArchiveTool(null)} onConfirm={(reason) => void action(archiveTool, { action: "archivar", detalle: reason }, `${archiveTool.nombre} archivada.`)} />}
     {archivedOpen && <ArchivedToolsModal activeTools={data.tools} archivedTools={data.archivedTools} busyId={busyId} onClose={() => setArchivedOpen(false)} onArchive={(tool) => { setArchivedOpen(false); setArchiveTool(tool); }} onRestore={(tool) => void action(tool, { action: "restaurar" }, `${tool.nombre} restaurada.`)} onHistory={(tool) => { setArchivedOpen(false); setHistoryTool(tool); }} />}
     {incidentsOpen && <IncidentToolsModal tools={openIncidents} admin={isAdmin} busyId={busyId} onClose={() => setIncidentsOpen(false)} onResolve={(tool) => { setIncidentsOpen(false); void action(tool, { action: "resolver_incidencia" }, `Incidencia de ${tool.nombre} resuelta.`); }} onHistory={(tool) => { setIncidentsOpen(false); setHistoryTool(tool); }} />}
@@ -390,8 +402,9 @@ function MobileMore({ admin, missing, unlocated, archived, incidents, onHistory,
       <MoreMenuButton icon={<AlertTriangle />} title="Incidencias" description="Daños, piezas o revisiones" count={incidents} badgeTone={incidents ? "orange" : "neutral"} onClick={onIncidents} />
     </MoreMenuSection>
     {admin && <MoreMenuSection title="Administración">
+      <InventoryLauncher mobileMenu />
       <MoreMenuButton icon={<PackagePlus />} title="Registrar herramienta" description="Añadir una herramienta nueva" onClick={onCreate} />
-      <MoreMenuButton icon={<QrCode />} title="Etiquetas QR" description="Preparar etiquetas para imprimir" onClick={onLabels} />
+      <MoreMenuButton icon={<QrCode />} title="Control de etiquetas" description="Ver QR y NFC pendientes o terminados" onClick={onLabels} />
       <MoreMenuButton icon={<Archive />} title="Archivo" description="Ver herramientas dadas de baja" count={archived} onClick={onArchive} />
       <MoreMenuButton icon={<Settings />} title="Configurar estanterías" description="Editar el plano y sus huecos" onClick={onShelves} />
     </MoreMenuSection>}
@@ -411,6 +424,205 @@ function MoreMenuButton({ icon, title, description, count, badgeTone = "neutral"
     {count !== undefined && <span className={`flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full px-2 text-sm font-black ring-1 ring-inset ${badgeClasses}`}>{count}</span>}
     <ChevronRight className="shrink-0 text-zinc-600" size={19} />
   </button>;
+}
+
+type InventoryData = { active: InventarioHerramientas | null; inventories: InventarioHerramientas[] };
+type NfcInventoryRecord = { recordType: string; data?: DataView; encoding?: string };
+type NfcInventoryReadingEvent = Event & { message: { records: NfcInventoryRecord[] } };
+type NfcInventoryReader = {
+  scan: (options?: { signal?: AbortSignal }) => Promise<void>;
+  addEventListener: {
+    (type: "reading", listener: (event: NfcInventoryReadingEvent) => void): void;
+    (type: "readingerror", listener: () => void): void;
+  };
+};
+type NfcInventoryReaderConstructor = new () => NfcInventoryReader;
+
+function InventoryLauncher({ mobileMenu = false }: { mobileMenu?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return <>{mobileMenu ? <MoreMenuButton icon={<ClipboardCheck />} title="Modo inventario" description="Escanear presentes y detectar las que faltan" onClick={() => setOpen(true)} /> : <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 font-black text-emerald-100"><ClipboardCheck size={19} /> Modo inventario</button>}{open && <InventoryModal onClose={() => setOpen(false)} />}</>;
+}
+
+function InventoryModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<InventoryData>({ active: null, inventories: [] });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [nfcReading, setNfcReading] = useState(false);
+  const [filter, setFilter] = useState<"pending" | "present" | "all">("pending");
+  const [error, setError] = useState("");
+  const [lastScan, setLastScan] = useState<InventarioHerramientaItem | null>(null);
+  const nfcAbortRef = useRef<AbortController | null>(null);
+  const nfcProcessingRef = useRef(false);
+  const activeInventoryRef = useRef<InventarioHerramientas | null>(null);
+  const inventoryItemsRef = useRef<InventarioHerramientaItem[]>([]);
+  const lastNfcReadRef = useRef<{ value: string; at: number } | null>(null);
+  const loadInventory = useCallback(async () => {
+    try {
+      const response = await fetch("/api/herramientas-comunes/inventarios", { cache: "no-store" });
+      const payload = await response.json() as InventoryData & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "No se pudo cargar el inventario.");
+      setData(payload); setError("");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo cargar el inventario."); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void Promise.resolve().then(loadInventory); }, [loadInventory]);
+  useEffect(() => () => nfcAbortRef.current?.abort(), []);
+  const active = data.active;
+  const items = active?.items || [];
+  useEffect(() => {
+    activeInventoryRef.current = active;
+    inventoryItemsRef.current = active?.items || [];
+  }, [active]);
+  const pending = items.filter((item) => item.resultado === "pendiente");
+  const present = items.filter((item) => item.resultado === "presente");
+  const shown = filter === "pending" ? pending : filter === "present" ? present : items;
+  const progress = active?.total_esperadas ? Math.round((present.length / active.total_esperadas) * 100) : 0;
+  const nfcSupported = typeof window !== "undefined" && window.isSecureContext && Boolean((window as Window & { NDEFReader?: NfcInventoryReaderConstructor }).NDEFReader);
+
+  async function start() {
+    setBusy(true); setError(""); setLastScan(null);
+    try {
+      const response = await fetch("/api/herramientas-comunes/inventarios", { method: "POST" });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "No se pudo iniciar el inventario.");
+      await loadInventory();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo iniciar el inventario."); }
+    finally { setBusy(false); }
+  }
+
+  async function scan(rawValue: string, source: "qr" | "nfc" = "qr") {
+    if (source === "qr") setScannerOpen(false);
+    setError(""); setLastScan(null);
+    const currentActive = activeInventoryRef.current;
+    const currentItems = inventoryItemsRef.current;
+    if (!currentActive) return;
+    const parsed = parseCommonToolsQr(rawValue);
+    if (parsed.kind === "location" || parsed.kind === "unknown") { setError("Ese código no pertenece a una herramienta. Lee la pegatina NFC o escanea el QR de la herramienta."); vibrate([100, 80, 100]); return; }
+    const item = parsed.kind === "tool-token"
+      ? currentItems.find((candidate) => candidate.qr_token?.toLocaleLowerCase("es") === parsed.token.toLocaleLowerCase("es"))
+      : currentItems.find((candidate) => normalize(candidate.codigo) === normalize(parsed.code));
+    if (!item) { setError("Esta herramienta no forma parte del inventario. Puede estar prestada, archivada o el código no es correcto."); vibrate([100, 80, 100]); return; }
+    if (item.resultado === "presente") { setLastScan(item); vibrate(50); return; }
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/herramientas-comunes/inventarios/${currentActive.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "scan", herramienta_id: item.herramienta_id }) });
+      const payload = await response.json() as InventarioHerramientaItem & { error?: string };
+      if (!response.ok) throw new Error(payload.error || "No se pudo registrar la herramienta.");
+      setLastScan({ ...item, ...payload });
+      vibrate(100);
+      await loadInventory();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo registrar la herramienta."); vibrate([100, 80, 100]); }
+    finally { setBusy(false); }
+  }
+
+  function stopNfc() {
+    nfcAbortRef.current?.abort();
+    nfcAbortRef.current = null;
+    nfcProcessingRef.current = false;
+    lastNfcReadRef.current = null;
+    setNfcReading(false);
+  }
+
+  async function startNfc() {
+    const Reader = (window as Window & { NDEFReader?: NfcInventoryReaderConstructor }).NDEFReader;
+    if (!Reader || !window.isSecureContext) { setError("Este móvil o navegador no permite leer NFC directamente. Puedes continuar escaneando los QR."); return; }
+    stopNfc(); setError(""); setLastScan(null);
+    const controller = new AbortController();
+    nfcAbortRef.current = controller;
+    try {
+      const reader = new Reader();
+      reader.addEventListener("readingerror", () => { setError("No se pudo leer la pegatina. Sepárala y vuelve a acercarla."); vibrate([100, 80, 100]); });
+      reader.addEventListener("reading", (event) => {
+        const rawValue = readNfcValue(event.message.records);
+        if (!rawValue) { setError("La pegatina NFC no contiene el enlace de una herramienta."); vibrate([100, 80, 100]); return; }
+        const now = Date.now();
+        const previousRead = lastNfcReadRef.current;
+        if (previousRead && previousRead.value === rawValue && now - previousRead.at < 2500) return;
+        lastNfcReadRef.current = { value: rawValue, at: now };
+        if (nfcProcessingRef.current) return;
+        nfcProcessingRef.current = true;
+        void scan(rawValue, "nfc").finally(() => { nfcProcessingRef.current = false; });
+      });
+      await reader.scan({ signal: controller.signal });
+      setNfcReading(true);
+    } catch (caught) {
+      if (caught instanceof Error && caught.name === "AbortError") return;
+      nfcAbortRef.current = null; setNfcReading(false);
+      setError(caught instanceof Error && caught.name === "NotAllowedError" ? "No se concedió permiso para leer NFC." : caught instanceof Error ? caught.message : "No se pudo activar el lector NFC.");
+    }
+  }
+
+  async function finish(markMissing: boolean) {
+    if (!active) return;
+    const question = pending.length
+      ? markMissing ? `Quedan ${pending.length} herramientas sin escanear. Se marcarán como no encontradas las que sigan debiendo estar en el taller; las que se hayan prestado quedarán excluidas. ¿Finalizar?` : `Quedan ${pending.length} herramientas sin escanear. Se guardarán en el resultado, pero no cambiará su estado. ¿Finalizar?`
+      : "Todas las herramientas están comprobadas. ¿Finalizar el inventario?";
+    if (!window.confirm(question)) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`/api/herramientas-comunes/inventarios/${active.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "finish", markMissing }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "No se pudo finalizar el inventario.");
+      stopNfc(); setLastScan(null); await loadInventory();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo finalizar el inventario."); }
+    finally { setBusy(false); }
+  }
+
+  async function cancel() {
+    if (!active || !window.confirm("¿Cancelar este inventario? Las comprobaciones realizadas quedarán en el historial, pero no cambiará ninguna herramienta.")) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`/api/herramientas-comunes/inventarios/${active.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || "No se pudo cancelar el inventario.");
+      stopNfc(); setLastScan(null); await loadInventory();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo cancelar el inventario."); }
+    finally { setBusy(false); }
+  }
+
+  return <><Modal wide title="Modo inventario" subtitle={active ? `Inventario #${active.id} · iniciado por ${active.creado_por}` : "Comprobación física de herramientas"} onClose={onClose}><div className="space-y-4">
+    {loading ? <Loading /> : error && !active ? <div className="space-y-3"><Notice tone="red">{error}</Notice><button onClick={() => void loadInventory()} className="min-h-12 w-full rounded-xl border border-zinc-700 font-black text-zinc-200">Reintentar</button></div> : active ? <>
+      <div className="grid grid-cols-3 gap-2"><IdentificationCount label="Esperadas" value={active.total_esperadas} tone="zinc" /><IdentificationCount label="Presentes" value={present.length} tone="green" /><IdentificationCount label="Pendientes" value={pending.length} tone={pending.length ? "fuchsia" : "green"} /></div>
+      <div className="rounded-2xl border border-zinc-700 bg-zinc-950/60 p-3"><div className="mb-2 flex items-center justify-between text-xs font-black"><span className="text-zinc-400">Progreso</span><span className="text-emerald-300">{progress}%</span></div><div className="h-3 overflow-hidden rounded-full bg-zinc-800"><div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${progress}%` }} /></div></div>
+      {error && <div role="alert"><Notice tone="red">{error}</Notice></div>}
+      {lastScan && <div role="status" className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3">{lastScan.foto_url ? <img src={lastScan.foto_url} alt="" className="h-14 w-14 rounded-xl object-cover" /> : <CheckCircle2 className="ml-2 shrink-0 text-emerald-300" size={30} />}<div className="min-w-0"><p className="text-xs font-black text-emerald-300">COMPROBADA</p><p className="font-black text-white">{lastScan.nombre}</p><p className="text-xs text-zinc-400">{lastScan.codigo} · {lastScan.ubicacion_esperada}</p></div></div>}
+      {nfcReading && <div role="status" className="flex items-center gap-3 rounded-2xl border border-fuchsia-400/35 bg-fuchsia-500/10 p-4"><span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-fuchsia-400 text-zinc-950"><span className="absolute inset-0 animate-ping rounded-full bg-fuchsia-400/30" /><Nfc className="relative" size={24} /></span><div><p className="font-black text-fuchsia-100">Lector NFC activo</p><p className="text-xs leading-5 text-fuchsia-200/70">Acerca una herramienta, espera la vibración y continúa con la siguiente.</p></div></div>}
+      <div className={nfcSupported ? "grid grid-cols-2 gap-2" : "grid"}><button disabled={busy} onClick={() => setScannerOpen(true)} className="flex min-h-16 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 font-black text-zinc-950 disabled:opacity-50">{busy ? <Loader2 className="animate-spin" /> : <ScanLine />} Escanear QR</button>{nfcSupported && <button disabled={busy} onClick={() => nfcReading ? stopNfc() : void startNfc()} className={`flex min-h-16 items-center justify-center gap-2 rounded-2xl border px-3 font-black ${nfcReading ? "border-red-500/35 bg-red-500/10 text-red-200" : "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-100"}`}><Nfc />{nfcReading ? "Detener NFC" : "Leer por NFC"}</button>}</div>
+      {!nfcSupported && <p className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-center text-xs leading-5 text-zinc-500">La lectura NFC directa no está disponible en este móvil o navegador. El inventario por QR sigue funcionando.</p>}
+      <div className="grid grid-cols-3 rounded-xl border border-zinc-700 bg-zinc-950 p-1" role="tablist"><InventoryFilter active={filter === "pending"} onClick={() => setFilter("pending")}>Pendientes</InventoryFilter><InventoryFilter active={filter === "present"} onClick={() => setFilter("present")}>Presentes</InventoryFilter><InventoryFilter active={filter === "all"} onClick={() => setFilter("all")}>Todas</InventoryFilter></div>
+      <div className="max-h-[35dvh] space-y-2 overflow-y-auto pr-1">{shown.length ? shown.map((item) => <InventoryItem key={item.herramienta_id} item={item} />) : <div className="rounded-2xl border border-dashed border-zinc-700 px-4 py-10 text-center text-sm font-bold text-zinc-500">{filter === "pending" ? "No queda ninguna herramienta pendiente." : "Todavía no hay herramientas en esta lista."}</div>}</div>
+      <div className="space-y-2 border-t border-zinc-800 pt-4"><button disabled={busy} onClick={() => void finish(true)} className={`min-h-14 w-full rounded-xl px-4 font-black disabled:opacity-50 ${pending.length ? "bg-amber-400 text-zinc-950" : "bg-emerald-400 text-zinc-950"}`}>{pending.length ? `Finalizar · ${pending.length} no encontradas` : "Finalizar inventario completo"}</button><details><summary className="min-h-10 cursor-pointer list-none py-2 text-center text-xs font-bold text-zinc-500">Otras opciones</summary><div className="grid grid-cols-2 gap-2"><button disabled={busy} onClick={() => void finish(false)} className="min-h-12 rounded-xl border border-zinc-700 px-2 text-xs font-bold text-zinc-300">Finalizar sin cambiar estados</button><button disabled={busy} onClick={() => void cancel()} className="min-h-12 rounded-xl border border-red-500/25 px-2 text-xs font-bold text-red-300">Cancelar inventario</button></div></details></div>
+    </> : <>
+      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5"><ClipboardCheck className="mb-3 text-emerald-300" size={38} /><h3 className="text-lg font-black text-white">Recorre el taller con el móvil</h3><p className="mt-2 text-sm leading-6 text-emerald-100/70">Lee la pegatina NFC o escanea el QR de cada herramienta. Las prestadas y archivadas no entran en el recuento. Puedes cerrar la pantalla y continuar después.</p></div>
+      <button disabled={busy} onClick={() => void start()} className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-400 text-lg font-black text-zinc-950 disabled:opacity-50">{busy ? <Loader2 className="animate-spin" /> : <ClipboardCheck />} Iniciar inventario</button>
+      {data.inventories.length > 0 && <section><h3 className="mb-2 px-1 text-xs font-black uppercase tracking-wide text-zinc-500">Últimos inventarios</h3><div className="space-y-2">{data.inventories.filter((inventory) => inventory.estado !== "abierto").map((inventory) => <div key={inventory.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3"><div><p className="font-black text-white">Inventario #{inventory.id}</p><p className="text-xs text-zinc-500">{formatDate(inventory.iniciado_at)} · {inventory.creado_por}</p></div><div className="text-right"><p className={`text-sm font-black ${inventory.estado === "cancelado" ? "text-zinc-500" : inventory.total_no_encontradas ? "text-amber-300" : "text-emerald-300"}`}>{inventory.estado === "cancelado" ? "Cancelado" : `${inventory.total_presentes}/${Math.max(0, inventory.total_esperadas - (inventory.total_excluidas || 0))} presentes`}</p>{inventory.estado === "finalizado" && <p className="text-xs text-zinc-500">{inventory.total_no_encontradas} no encontradas{inventory.total_excluidas ? ` · ${inventory.total_excluidas} prestadas` : ""}</p>}</div></div>)}</div></section>}
+    </>}
+  </div></Modal>{scannerOpen && <BarcodeScanner title="Inventario de herramientas" description="Escanea el QR pegado en la herramienta que tienes delante." manualPlaceholder="Código de herramienta" manualHint="También puedes escribir el código visible de la herramienta." onScan={(value) => void scan(value)} onClose={() => setScannerOpen(false)} />}</>;
+}
+
+function InventoryFilter({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`min-h-11 rounded-lg px-1 text-xs font-black ${active ? "bg-emerald-400 text-zinc-950" : "text-zinc-500"}`}>{children}</button>;
+}
+
+function InventoryItem({ item }: { item: InventarioHerramientaItem }) {
+  const done = item.resultado === "presente";
+  return <div className={`flex items-center gap-3 rounded-xl border p-3 ${done ? "border-emerald-500/20 bg-emerald-500/5" : "border-zinc-800 bg-zinc-950/50"}`}>{item.foto_url ? <img src={item.foto_url} alt={`Foto de ${item.nombre}`} loading="lazy" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-zinc-600"><Wrench size={21} /></span>}<div className="min-w-0 flex-1"><p className="font-mono text-[10px] font-black text-cyan-300">{item.codigo}</p><p className="font-black leading-tight text-white">{item.nombre}</p><p className="mt-1 truncate text-xs text-zinc-500">{item.ubicacion_esperada}</p></div>{done ? <CheckCircle2 className="shrink-0 text-emerald-300" size={22} /> : <Clock3 className="shrink-0 text-amber-300" size={21} />}</div>;
+}
+
+function readNfcValue(records: NfcInventoryRecord[]) {
+  for (const record of records) {
+    if (!record.data) continue;
+    try {
+      const value = new TextDecoder(record.encoding || "utf-8").decode(record.data).trim();
+      if (value) return value;
+    } catch { /* Probamos el siguiente registro de la pegatina. */ }
+  }
+  return "";
+}
+
+function vibrate(pattern: number | number[]) {
+  try { navigator.vibrate?.(pattern); } catch { /* La vibración es una ayuda opcional. */ }
 }
 
 type MobileTab = "buscar" | "lista" | "prestamos" | "plano" | "mas";
@@ -499,6 +711,7 @@ function CategoryPicker({ categories, defaultValue = "", disabled = false }: { c
 type ScannedToolModalProps = {
   tool: HerramientaComun;
   busy: boolean;
+  canManage: boolean;
   canReportMissing: boolean;
   onClose: () => void;
   onLoan: () => void;
@@ -508,11 +721,12 @@ type ScannedToolModalProps = {
   onShowLocation: () => void;
   onHistory: () => void;
   onMove: () => void;
+  onNfc: () => void;
   onReportMissing: () => void;
   onFound: () => void;
 };
 
-function ScannedToolModal({ tool, busy, canReportMissing, onClose, onLoan, onReturn, onPlace, onChoosePlan, onShowLocation, onHistory, onMove, onReportMissing, onFound }: ScannedToolModalProps) {
+function ScannedToolModal({ tool, busy, canManage, canReportMissing, onClose, onLoan, onReturn, onPlace, onChoosePlan, onShowLocation, onHistory, onMove, onNfc, onReportMissing, onFound }: ScannedToolModalProps) {
   const located = Boolean(tool.estanteria_id && tool.nivel && tool.posicion);
   const canMove = tool.estado !== "prestada";
   return <Modal title="Ficha de herramienta" subtitle={`${tool.codigo} · ${tool.nombre}`} onClose={onClose}><div className="space-y-4">
@@ -526,7 +740,8 @@ function ScannedToolModal({ tool, busy, canReportMissing, onClose, onLoan, onRet
       <div className="grid grid-cols-2 gap-2">
         <button disabled={!located} onClick={onShowLocation} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-2 text-sm font-black text-cyan-100 disabled:opacity-35"><MapPin size={18} /> Ubicación</button>
         <button onClick={onHistory} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-2 text-sm font-black text-zinc-100"><History size={18} /> Historial</button>
-        <button disabled={!canMove} onClick={onMove} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-2 text-sm font-black text-violet-100 disabled:opacity-35"><LayoutGrid size={18} /> Mover</button>
+        {canManage && <button disabled={!canMove} onClick={onMove} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-2 text-sm font-black text-violet-100 disabled:opacity-35"><LayoutGrid size={18} /> Mover</button>}
+        {canManage && <button disabled={!tool.qr_token} onClick={onNfc} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 text-sm font-black text-fuchsia-100 disabled:opacity-35"><Nfc size={18} /> Grabar NFC</button>}
         {tool.estado === "perdida" ? <button disabled={busy} onClick={onFound} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-2 text-sm font-black text-emerald-100 disabled:opacity-40"><CheckCircle2 size={18} /> Ya encontrada</button> : <button disabled={!canReportMissing || tool.estado !== "disponible" || !located} onClick={onReportMissing} className="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-2 text-sm font-black text-red-100 disabled:opacity-35"><AlertTriangle size={18} /> No está aquí</button>}
       </div>
     </section>
@@ -541,6 +756,61 @@ function ScannedToolModal({ tool, busy, canReportMissing, onClose, onLoan, onRet
 
 function ReportMissingModal({ tool, busy, onClose, onConfirm }: { tool: HerramientaComun; busy: boolean; onClose: () => void; onConfirm: () => void }) {
   return <Modal title="Reportar herramienta ausente" subtitle={`${tool.codigo} · ${tool.nombre}`} onClose={onClose}><div className="space-y-4"><Notice tone="red"><strong className="block text-base">¿No está en el lugar indicado?</strong><span className="mt-1 block leading-6">Se marcará como no encontrada, quedará registrado en el historial y no podrá retirarse hasta que alguien confirme que ha aparecido.</span></Notice><div className="rounded-xl border border-zinc-700 bg-zinc-950/50 p-4"><p className="text-xs font-black uppercase tracking-wide text-zinc-500">Ubicación que se va a reportar</p><p className="mt-1 font-black text-white"><MapPin className="mr-1 inline text-cyan-300" size={17} />{location(tool)}</p></div><div className="grid grid-cols-2 gap-2"><button disabled={busy} onClick={onClose} className="min-h-14 rounded-xl border border-zinc-700 font-bold text-zinc-300">Cancelar</button><button disabled={busy} onClick={onConfirm} className="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-red-500 px-3 font-black text-white disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={19} /> : <AlertTriangle size={19} />} Confirmar reporte</button></div></div></Modal>;
+}
+
+type NfcWriter = { write: (message: { records: Array<{ recordType: "url"; data: string }> }) => Promise<void> };
+type NfcWriterConstructor = new () => NfcWriter;
+
+function NfcToolModal({ tool, onClose, onStatus }: { tool: HerramientaComun; onClose: () => void; onStatus: (completed: boolean) => Promise<unknown> }) {
+  const [writing, setWriting] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const path = tool.qr_token ? buildToolQrPath(tool.qr_token, tool.codigo) : "";
+  const url = typeof window === "undefined" || !path ? path : `${window.location.origin}${path}`;
+  const directSupported = typeof window !== "undefined" && Boolean((window as Window & { NDEFReader?: NfcWriterConstructor }).NDEFReader) && window.isSecureContext;
+  const localOnly = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url);
+  async function writeTag() {
+    setError(""); setSuccess(""); setCopied(false);
+    const Reader = (window as Window & { NDEFReader?: NfcWriterConstructor }).NDEFReader;
+    if (!Reader || !window.isSecureContext) { setError("Este navegador no permite grabar NFC directamente. Copia el enlace y grábalo con NFC Tools."); return; }
+    setWriting(true);
+    try {
+      const writer = new Reader();
+      await writer.write({ records: [{ recordType: "url", data: url }] });
+      await onStatus(true);
+      setSuccess("Pegatina grabada correctamente. Sepárala del móvil y vuelve a acercarla para comprobarla.");
+    } catch (caught) {
+      const message = caught instanceof Error && caught.name === "NotAllowedError" ? "No se concedió permiso para usar NFC." : caught instanceof Error ? caught.message : "No se pudo grabar la pegatina NFC.";
+      setError(message);
+    } finally { setWriting(false); }
+  }
+  async function copyUrl() {
+    setError(""); setSuccess("");
+    try { await navigator.clipboard.writeText(url); setCopied(true); }
+    catch { setError("No se pudo copiar automáticamente. Mantén pulsado el enlace y cópialo manualmente."); }
+  }
+  async function saveManualStatus(completed: boolean) {
+    setSavingStatus(true); setError(""); setSuccess("");
+    try { await onStatus(completed); setSuccess(completed ? "Pegatina marcada como grabada." : "Pegatina marcada como pendiente de grabar."); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "No se pudo guardar el estado de la pegatina."); }
+    finally { setSavingStatus(false); }
+  }
+  return <Modal title="Grabar pegatina NFC" subtitle={`${tool.codigo} · ${tool.nombre}`} onClose={onClose}><div className="space-y-4">
+    <div className="flex items-center gap-4 rounded-2xl border border-fuchsia-500/25 bg-fuchsia-500/10 p-4">{tool.foto_url ? <img src={tool.foto_url} alt={`Foto de ${tool.nombre}`} className="h-20 w-20 shrink-0 rounded-xl object-cover" /> : <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-zinc-950/60 text-fuchsia-300"><Nfc size={34} /></span>}<div className="min-w-0"><p className="font-mono text-xs font-black text-cyan-300">{tool.codigo}</p><h3 className="mt-1 font-black text-white">{tool.nombre}</h3><p className="mt-1 text-xs leading-5 text-fuchsia-100/70">Al acercar el móvil se abrirá directamente la ficha de esta herramienta.</p></div></div>
+    {!tool.qr_token && <Notice tone="red">Esta herramienta todavía no tiene identificador permanente. Aplica primero la actualización de QR.</Notice>}
+    {tool.nfc_grabada_at && <Notice tone="green">NFC grabada el {formatDate(tool.nfc_grabada_at)}{tool.nfc_grabada_por ? ` por ${tool.nfc_grabada_por}` : ""}.</Notice>}
+    {localOnly && <Notice tone="red">Este enlace usa localhost y solo funcionaría en este ordenador. Abre la web mediante su dirección de red o dominio antes de grabar la pegatina.</Notice>}
+    {error && <div role="alert"><Notice tone="red">{error}</Notice></div>}
+    {success && <div role="status"><Notice tone="green">{success}</Notice></div>}
+    <div className="rounded-xl border border-zinc-700 bg-zinc-950/55 p-3"><p className="mb-2 text-[10px] font-black uppercase tracking-wide text-zinc-500">Enlace que se grabará</p><input readOnly value={url} onFocus={(event) => event.currentTarget.select()} className="input font-mono text-xs" aria-label="Enlace NFC de la herramienta" /></div>
+    {directSupported ? <button disabled={writing || !url || localOnly} onClick={() => void writeTag()} className="flex min-h-16 w-full items-center justify-center gap-3 rounded-2xl bg-fuchsia-400 px-4 text-lg font-black text-zinc-950 disabled:opacity-40">{writing ? <><Loader2 className="animate-spin" /> Acerca ahora la pegatina…</> : <><Nfc /> Grabar directamente</>}</button> : <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100"><strong className="block">Grabación directa no disponible</strong>Copia el enlace y usa la opción Escribir → URL/URI de NFC Tools.</div>}
+    <button disabled={!url} onClick={() => void copyUrl()} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950/40 font-black text-zinc-200 disabled:opacity-40">{copied ? <CheckCircle2 className="text-emerald-300" size={20} /> : <Copy size={20} />}{copied ? "Enlace copiado" : "Copiar enlace para NFC Tools"}</button>
+    {!directSupported && !tool.nfc_grabada_at && <button disabled={savingStatus} onClick={() => void saveManualStatus(true)} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 font-black text-zinc-950 disabled:opacity-50">{savingStatus ? <Loader2 className="animate-spin" size={19} /> : <CheckCircle2 size={19} />} Ya la he grabado</button>}
+    {tool.nfc_grabada_at && <button disabled={savingStatus} onClick={() => void saveManualStatus(false)} className="min-h-12 w-full rounded-xl border border-zinc-700 px-3 text-sm font-bold text-zinc-400 disabled:opacity-50">Marcar NFC como pendiente</button>}
+    <p className="px-2 text-center text-xs leading-5 text-zinc-500">No bloquees la pegatina como solo lectura hasta haber comprobado que abre la herramienta correcta.</p>
+  </div></Modal>;
 }
 
 type PlanSelection = { shelfId: number; level: number; position: string };
@@ -575,30 +845,62 @@ function ScannedLocationModal({ value, tools, returningTool, onClose, onRetry }:
   return <Modal title="Ubicación escaneada" subtitle={scannedName} onClose={onClose}><div className="space-y-4"><div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4"><p className="text-xs font-bold uppercase text-cyan-300">Aquí deben guardarse</p><p className="mt-1 text-2xl font-black text-white">{tools.length} herramienta{tools.length === 1 ? "" : "s"}</p></div>{tools.length ? <div className="space-y-2">{tools.map((tool) => <div key={tool.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3"><div><p className="font-mono text-[10px] font-black text-cyan-300">{tool.codigo}</p><p className="font-bold text-white">{tool.nombre}</p></div><StatusBadge status={tool.estado} /></div>)}</div> : <Empty text="Este hueco no tiene herramientas asignadas." />}</div></Modal>;
 }
 
-function LabelsModal({ tools, shelves, onClose }: { tools: HerramientaComun[]; shelves: EstanteriaHerramientas[]; onClose: () => void }) {
+type IdentificationFilter = "" | "pending" | "qr_pending" | "qr_done" | "nfc_pending" | "nfc_done" | "complete";
+
+function LabelsModal({ tools, shelves, onClose, onPrinted, onReset, onNfc }: { tools: HerramientaComun[]; shelves: EstanteriaHerramientas[]; onClose: () => void; onPrinted: (tool: HerramientaComun) => void | Promise<unknown>; onReset: (tool: HerramientaComun, kind: "qr" | "nfc") => Promise<unknown>; onNfc: (tool: HerramientaComun) => void }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
+  const [identification, setIdentification] = useState<IdentificationFilter>("");
+  const [resetting, setResetting] = useState("");
   const [tab, setTab] = useState<"tools" | "locations">("tools");
   const term = normalize(query);
   const categories = categoryOptions(tools);
-  const filteredTools = tools.filter((tool) => (!category || splitCategories(tool.categoria).some((value) => normalize(value) === normalize(category))) && (!term || normalize([tool.codigo, tool.nombre, tool.marca, tool.categoria, tool.descripcion, tool.estanteria?.codigo, tool.estanteria?.nombre, tool.estanteria?.zona].filter(Boolean).join(" ")).includes(term)));
+  const filteredTools = tools.filter((tool) => {
+    if (category && !splitCategories(tool.categoria).some((value) => normalize(value) === normalize(category))) return false;
+    if (term && !normalize([tool.codigo, tool.nombre, tool.marca, tool.categoria, tool.descripcion, tool.estanteria?.codigo, tool.estanteria?.nombre, tool.estanteria?.zona].filter(Boolean).join(" ")).includes(term)) return false;
+    if (identification === "pending" && tool.qr_impresa_at && tool.nfc_grabada_at) return false;
+    if (identification === "qr_pending" && tool.qr_impresa_at) return false;
+    if (identification === "qr_done" && !tool.qr_impresa_at) return false;
+    if (identification === "nfc_pending" && tool.nfc_grabada_at) return false;
+    if (identification === "nfc_done" && !tool.nfc_grabada_at) return false;
+    if (identification === "complete" && (!tool.qr_impresa_at || !tool.nfc_grabada_at)) return false;
+    return true;
+  });
+  const qrDone = tools.filter((tool) => tool.qr_impresa_at).length;
+  const nfcDone = tools.filter((tool) => tool.nfc_grabada_at).length;
   const locationCount = shelves.reduce((total, shelf) => total + shelf.configuracion.filas.reduce((sum, row) => sum + row.columnas, 0), 0);
-  return <Modal wide title="Imprimir etiquetas QR" subtitle="Elige qué quieres identificar" onClose={onClose}><div className="space-y-5">
-    <div className="flex items-start gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4"><span className="rounded-xl bg-cyan-500/10 p-2.5 text-cyan-300"><QrCode size={23} /></span><div><p className="font-black text-white">Etiquetas listas para escanear</p><p className="mt-1 text-sm leading-5 text-zinc-400">Imprime el QR de una herramienta o los QR de todos los huecos de una estantería.</p></div></div>
+  async function reset(tool: HerramientaComun, kind: "qr" | "nfc") {
+    const key = `${tool.id}-${kind}`; setResetting(key);
+    try { await onReset(tool, kind); }
+    catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo cambiar el estado."); }
+    finally { setResetting(""); }
+  }
+  return <Modal wide title="Control de etiquetas" subtitle="Todas las herramientas en un solo sitio" onClose={onClose}><div className="space-y-5">
+    <div className="grid grid-cols-3 gap-2"><IdentificationCount label="Herramientas" value={tools.length} tone="zinc" /><IdentificationCount label="QR impresos" value={qrDone} tone={qrDone === tools.length ? "green" : "cyan"} /><IdentificationCount label="NFC grabados" value={nfcDone} tone={nfcDone === tools.length ? "green" : "fuchsia"} /></div>
     <div className="grid grid-cols-2 rounded-2xl border border-zinc-700 bg-zinc-950 p-1.5" role="tablist" aria-label="Tipo de etiquetas">
       <button type="button" role="tab" aria-selected={tab === "tools"} onClick={() => setTab("tools")} className={`flex min-h-14 items-center justify-center gap-2 rounded-xl px-2 text-sm font-black ${tab === "tools" ? "bg-cyan-400 text-zinc-950" : "text-zinc-400"}`}><Wrench size={18} /> Herramientas <span className={`rounded-full px-2 py-0.5 text-xs ${tab === "tools" ? "bg-zinc-950/15" : "bg-zinc-800"}`}>{tools.length}</span></button>
       <button type="button" role="tab" aria-selected={tab === "locations"} onClick={() => setTab("locations")} className={`flex min-h-14 items-center justify-center gap-2 rounded-xl px-2 text-sm font-black ${tab === "locations" ? "bg-cyan-400 text-zinc-950" : "text-zinc-400"}`}><LayoutGrid size={18} /> Ubicaciones <span className={`rounded-full px-2 py-0.5 text-xs ${tab === "locations" ? "bg-zinc-950/15" : "bg-zinc-800"}`}>{locationCount}</span></button>
     </div>
     {tab === "tools" ? <section role="tabpanel" className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-[1fr_220px]"><label className="relative block"><span className="sr-only">Buscar herramienta</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-400" size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nombre, código o marca" className="input !min-h-13 !py-3 !pl-10 !pr-10" />{query && <button type="button" onClick={() => setQuery("")} aria-label="Limpiar búsqueda" className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 active:bg-zinc-800"><X size={17} /></button>}</label><label><span className="sr-only">Filtrar por categoría</span><select value={category} onChange={(event) => setCategory(event.target.value)} className="input !min-h-13 !py-3"><option value="">Todas las categorías</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label></div>
-      <div className="flex items-center justify-between gap-3 px-1"><p className="text-sm font-bold text-cyan-200">{filteredTools.length} de {tools.length} herramientas</p>{(query || category) && <button type="button" onClick={() => { setQuery(""); setCategory(""); }} className="min-h-9 px-2 text-sm font-black text-cyan-300">Limpiar filtros</button>}</div>
-      <div className="max-h-[54dvh] space-y-3 overflow-y-auto pr-1">{filteredTools.length ? filteredTools.map((tool) => <article key={tool.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50"><header className="flex items-center gap-3 border-b border-zinc-800 p-3">{tool.foto_url ? <img src={tool.foto_url} alt={`Foto de ${tool.nombre}`} loading="lazy" width={112} height={112} className="h-14 w-14 shrink-0 rounded-xl border border-zinc-700 object-cover" /> : <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-zinc-600"><Wrench size={23} /></span>}<div className="min-w-0"><p className="font-mono text-[11px] font-black text-cyan-300">{tool.codigo}</p><h3 className="font-black leading-tight text-white">{tool.nombre}</h3><p className="mt-1 text-xs text-zinc-500">{tool.categoria || "Sin categoría"}{tool.estanteria ? ` · ${tool.estanteria.codigo}` : ""}</p></div></header><div className="p-3"><ToolQrLabelButton tool={tool} /></div></article>) : <div className="rounded-2xl border border-dashed border-zinc-700 px-4 py-12 text-center text-sm text-zinc-500">No hay herramientas que coincidan con los filtros.</div>}</div>
+      <label className="relative block"><span className="sr-only">Buscar herramienta</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-400" size={19} /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nombre, código o marca" className="input !min-h-13 !py-3 !pl-10 !pr-10" />{query && <button type="button" onClick={() => setQuery("")} aria-label="Limpiar búsqueda" className="absolute right-1.5 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 active:bg-zinc-800"><X size={17} /></button>}</label>
+      <div className="grid grid-cols-2 gap-2"><label><span className="sr-only">Filtrar por categoría</span><select value={category} onChange={(event) => setCategory(event.target.value)} className="input !min-h-13 !py-3"><option value="">Todas las categorías</option>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label><span className="sr-only">Filtrar por identificación</span><select value={identification} onChange={(event) => setIdentification(event.target.value as IdentificationFilter)} className="input !min-h-13 !py-3"><option value="">Todos</option><option value="pending">Con algo pendiente</option><option value="qr_pending">QR sin imprimir</option><option value="qr_done">QR impresos</option><option value="nfc_pending">NFC sin grabar</option><option value="nfc_done">NFC grabados</option><option value="complete">QR + NFC terminados</option></select></label></div>
+      <div className="flex items-center justify-between gap-3 px-1"><p className="text-sm font-bold text-cyan-200">{filteredTools.length} de {tools.length} herramientas</p>{(query || category || identification) && <button type="button" onClick={() => { setQuery(""); setCategory(""); setIdentification(""); }} className="min-h-9 px-2 text-sm font-black text-cyan-300">Limpiar filtros</button>}</div>
+      <div className="max-h-[54dvh] space-y-3 overflow-y-auto pr-1">{filteredTools.length ? filteredTools.map((tool) => <article key={tool.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50"><header className="flex items-center gap-3 border-b border-zinc-800 p-3">{tool.foto_url ? <img src={tool.foto_url} alt={`Foto de ${tool.nombre}`} loading="lazy" width={112} height={112} className="h-16 w-16 shrink-0 rounded-xl border border-zinc-700 object-cover" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-zinc-600"><Wrench size={25} /></span>}<div className="min-w-0 flex-1"><p className="font-mono text-[11px] font-black text-cyan-300">{tool.codigo}</p><h3 className="font-black leading-tight text-white">{tool.nombre}</h3><p className="mt-1 text-xs text-zinc-500">{tool.categoria || "Sin categoría"}{tool.estanteria ? ` · ${tool.estanteria.codigo}` : ""}</p><div className="mt-2 flex flex-wrap gap-1.5"><IdentificationBadge done={Boolean(tool.qr_impresa_at)} label="QR" /><IdentificationBadge done={Boolean(tool.nfc_grabada_at)} label="NFC" /></div></div></header><div className="space-y-2.5 p-3"><ToolQrLabelButton tool={tool} onPrinted={onPrinted} /><button type="button" onClick={() => onNfc(tool)} className="flex min-h-13 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-500/35 bg-fuchsia-500/10 px-3 font-black text-fuchsia-100"><Nfc size={19} /> {tool.nfc_grabada_at ? "Volver a grabar NFC" : "Grabar NFC"}</button>{(tool.qr_impresa_at || tool.nfc_grabada_at) && <details><summary className="min-h-10 cursor-pointer list-none py-2 text-center text-xs font-bold text-zinc-500">Corregir estado</summary><div className="grid grid-cols-2 gap-2">{tool.qr_impresa_at && <button disabled={resetting === `${tool.id}-qr`} onClick={() => void reset(tool, "qr")} className="min-h-11 rounded-lg border border-zinc-700 px-2 text-xs font-bold text-zinc-400 disabled:opacity-50">QR pendiente</button>}{tool.nfc_grabada_at && <button disabled={resetting === `${tool.id}-nfc`} onClick={() => void reset(tool, "nfc")} className="min-h-11 rounded-lg border border-zinc-700 px-2 text-xs font-bold text-zinc-400 disabled:opacity-50">NFC pendiente</button>}</div></details>}</div></article>) : <div className="rounded-2xl border border-dashed border-zinc-700 px-4 py-12 text-center text-sm text-zinc-500">No hay herramientas que coincidan con los filtros.</div>}</div>
     </section> : <section role="tabpanel" className="space-y-3"><div className="px-1"><h3 className="font-black text-white">Ubicaciones por estantería</h3><p className="mt-1 text-sm text-zinc-500">Cada acción imprime todos los huecos de la estantería seleccionada.</p></div><div className="max-h-[58dvh] space-y-3 overflow-y-auto pr-1">{shelves.map((shelf) => { const count = shelf.configuracion.filas.reduce((sum, row) => sum + row.columnas, 0); return <article key={shelf.id} className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50"><header className="border-b border-zinc-800 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-black text-cyan-300">{shelf.codigo}</p><h3 className="font-black text-white">{shelf.nombre}</h3><p className="mt-1 text-sm text-zinc-500">{shelf.zona}</p></div><span className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-black text-zinc-300">{count} etiqueta{count === 1 ? "" : "s"}</span></div></header><div className="p-3"><ShelfLocationLabelsButton shelf={shelf} /></div></article>; })}</div></section>}
   </div></Modal>;
 }
 
-function ToolLabelAfterSaveModal({ tool, onClose }: { tool: HerramientaComun; onClose: () => void }) {
-  return <Modal title="Herramienta guardada" subtitle={`${tool.codigo} · ${tool.nombre}`} onClose={onClose}><div className="space-y-4"><div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5"><CheckCircle2 className="mb-3 text-emerald-300" size={34} /><p className="font-black text-emerald-100">Los datos se han guardado correctamente</p><p className="mt-1 text-sm text-emerald-200/60">Si necesitas identificarla ahora, puedes imprimir su etiqueta QR.</p></div><ToolQrLabelButton tool={tool} /><button onClick={onClose} className="min-h-12 w-full rounded-xl border border-zinc-700 font-bold text-zinc-300">Terminar sin imprimir</button></div></Modal>;
+function IdentificationCount({ label, value, tone }: { label: string; value: number; tone: "zinc" | "cyan" | "fuchsia" | "green" }) {
+  const classes = { zinc: "border-zinc-700 bg-zinc-950 text-zinc-200", cyan: "border-cyan-500/30 bg-cyan-500/10 text-cyan-200", fuchsia: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-200", green: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" }[tone];
+  return <div className={`rounded-xl border p-2.5 text-center ${classes}`}><p className="text-xl font-black">{value}</p><p className="mt-0.5 text-[10px] font-black uppercase leading-4 tracking-wide">{label}</p></div>;
+}
+
+function IdentificationBadge({ done, label }: { done: boolean; label: string }) {
+  return <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${done ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-amber-500/30 bg-amber-500/10 text-amber-200"}`}>{done ? <CheckCircle2 className="mr-1 inline" size={12} /> : <Clock3 className="mr-1 inline" size={12} />}{label} {done ? "hecho" : "pendiente"}</span>;
+}
+
+function ToolLabelAfterSaveModal({ tool, onClose, onNfc, onPrinted }: { tool: HerramientaComun; onClose: () => void; onNfc: () => void; onPrinted: (tool: HerramientaComun) => void | Promise<unknown> }) {
+  return <Modal title="Herramienta guardada" subtitle={`${tool.codigo} · ${tool.nombre}`} onClose={onClose}><div className="space-y-4"><div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5"><CheckCircle2 className="mb-3 text-emerald-300" size={34} /><p className="font-black text-emerald-100">Los datos se han guardado correctamente</p><p className="mt-1 text-sm text-emerald-200/60">Puedes identificarla con una etiqueta QR o grabar una pegatina NFC.</p></div><ToolQrLabelButton tool={tool} onPrinted={onPrinted} />{tool.qr_token && <button onClick={onNfc} className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-500/35 bg-fuchsia-500/10 font-black text-fuchsia-100"><Nfc size={20} /> Preparar pegatina NFC</button>}<button onClick={onClose} className="min-h-12 w-full rounded-xl border border-zinc-700 font-bold text-zinc-300">Terminar sin imprimir</button></div></Modal>;
 }
 
 type ShelfDraft = { id?: number; codigo: string; nombre: string; zona: string; configuracion: ConfiguracionEstanteriaHerramientas };

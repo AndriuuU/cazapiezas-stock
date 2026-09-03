@@ -14,7 +14,7 @@ const LABEL_SIZE_OPTIONS: Array<{ value: LabelSize; label: string }> = [
   { value: "large", label: "Grande · 100 × 62 mm" },
 ];
 
-export function ToolQrLabelButton({ tool, compact = false }: { tool: HerramientaComun; compact?: boolean }) {
+export function ToolQrLabelButton({ tool, compact = false, onPrinted }: { tool: HerramientaComun; compact?: boolean; onPrinted?: (tool: HerramientaComun) => void | Promise<unknown> }) {
   const [busy, setBusy] = useState<"qr" | "name" | "browser" | null>(null);
   const [size, setSize] = useState<LabelSize>("standard");
   if (!tool.qr_token) return <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">Falta activar los QR permanentes en la base de datos.</p>;
@@ -25,6 +25,7 @@ export function ToolQrLabelButton({ tool, compact = false }: { tool: Herramienta
       const qr = await makeQr(url);
       const html = documentHtml(toolLabel(tool, qr, size), size);
       openPrint(html, destination);
+      await onPrinted?.(tool);
     } catch (caught) { window.alert(caught instanceof Error ? caught.message : "No se pudo generar la etiqueta."); }
     finally { setBusy(null); }
   }

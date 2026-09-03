@@ -4,7 +4,7 @@ import axios from "axios";
 import { protectApiRequest } from "@/lib/request-security";
 import { resolveActionActor } from "@/lib/action-actor";
 import { getRequestUser } from "@/lib/auth";
-import { STOCK_CORRECTION_ACTOR_ID, STOCK_CORRECTION_ACTOR_NAME } from "@/lib/stock-adjustment-actor";
+import { STOCK_CORRECTION_ACTOR, STOCK_CORRECTION_ACTOR_ID } from "@/lib/stock-adjustment-actor";
 import {
   getSupabaseApiConfig,
   parseSupabaseResponse,
@@ -241,9 +241,10 @@ export async function POST(request: Request) {
     const nextQuantity = Number(quantity_after);
     const previousQuantity = Number(quantity_before);
     const signedUser = await getRequestUser(request);
-    const isStockCorrection = actor_user_id === STOCK_CORRECTION_ACTOR_ID && signedUser?.rol === "administrador";
-    const actor = isStockCorrection ? null : await resolveActionActor(request, actor_user_id);
-    const employeeName = isStockCorrection ? STOCK_CORRECTION_ACTOR_NAME : actor?.nombre.trim() || "";
+    const actor = signedUser?.rol === "administrador" && actor_user_id === STOCK_CORRECTION_ACTOR_ID
+      ? STOCK_CORRECTION_ACTOR
+      : await resolveActionActor(request, actor_user_id);
+    const employeeName = actor?.nombre.trim() || "";
 
     if (!material_id || !Number.isFinite(nextQuantity) || nextQuantity < 0) {
       return NextResponse.json(

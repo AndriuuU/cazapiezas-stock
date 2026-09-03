@@ -38,6 +38,10 @@ export interface HerramientaComun {
   id: number;
   codigo: string;
   qr_token?: string;
+  qr_impresa_at?: string | null;
+  qr_impresa_por?: string | null;
+  nfc_grabada_at?: string | null;
+  nfc_grabada_por?: string | null;
   nombre: string;
   categoria: string | null;
   marca: string | null;
@@ -81,3 +85,31 @@ export interface MovimientoHerramienta {
 }
 
 export type TipoIncidenciaHerramienta = "falta_pieza" | "danada" | "revision";
+
+export interface InventarioHerramientas {
+  id: number;
+  estado: "abierto" | "finalizado" | "cancelado";
+  creado_por: string;
+  iniciado_at: string;
+  finalizado_at: string | null;
+  finalizado_por: string | null;
+  total_esperadas: number;
+  total_presentes: number;
+  total_no_encontradas: number;
+  total_excluidas: number;
+  items?: InventarioHerramientaItem[];
+}
+
+export interface InventarioHerramientaItem {
+  inventario_id: number;
+  herramienta_id: number;
+  codigo: string;
+  nombre: string;
+  qr_token: string | null;
+  foto_url: string | null;
+  ubicacion_esperada: string | null;
+  estado_anterior: EstadoHerramienta;
+  resultado: "pendiente" | "presente" | "no_encontrada" | "excluida";
+  comprobada_at: string | null;
+  comprobada_por: string | null;
+}

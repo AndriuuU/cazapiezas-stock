@@ -17,7 +17,7 @@ export async function PATCH(request: Request, context: Context) {
   try {
     const { id } = await context.params;
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "Herramienta no válida." }, { status: 400 });
-    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; incidencia_tipo?: TipoIncidenciaHerramienta | null; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown; solo_localizacion?: unknown; espacio_ocupado?: unknown };
+    const body = await request.json() as { action?: string; actor_user_id?: unknown; empleado?: unknown; vehiculo?: unknown; estado?: EstadoHerramienta; detalle?: unknown; incidencia_tipo?: TipoIncidenciaHerramienta | null; estanteria_id?: unknown; nivel?: unknown; posicion?: unknown; codigo?: unknown; nombre?: unknown; categoria?: unknown; marca?: unknown; descripcion?: unknown; solo_localizacion?: unknown; espacio_ocupado?: unknown; identificacion?: "qr" | "nfc"; completado?: unknown };
     const signedUser = await getRequestUser(request);
     if (!signedUser) return NextResponse.json({ error: "Inicia sesión para continuar." }, { status: 401 });
     if (["editar", "archivar", "restaurar", "resolver_incidencia"].includes(body.action || "") && signedUser.rol !== "administrador") return NextResponse.json({ error: "Esta acción necesita permisos de administrador." }, { status: 403 });
@@ -26,6 +26,8 @@ export async function PATCH(request: Request, context: Context) {
     const currentResponse = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?${select}`, { headers: supabaseHeaders(key) });
     const current = (await parseSupabaseResponse<HerramientaComun[]>(currentResponse))[0];
     if (!current) return NextResponse.json({ error: "Herramienta no encontrada." }, { status: 404 });
+    if (body.action === "identificacion" && signedUser.rol !== "administrador") return NextResponse.json({ error: "Solo un administrador puede gestionar QR y NFC." }, { status: 403 });
+    if (body.action === "ubicacion" && current.estanteria_id && signedUser.rol !== "administrador") return NextResponse.json({ error: "Solo un administrador puede mover una herramienta que ya tiene ubicación." }, { status: 403 });
 
     let settings = DEFAULT_TOOL_SETTINGS;
     const settingsResponse = await fetch(`${url}/rest/v1/cazapiezas_configuracion?select=valor&clave=eq.herramientas&limit=1`, { headers: supabaseHeaders(key), cache: "no-store" });
@@ -135,6 +137,14 @@ export async function PATCH(request: Request, context: Context) {
       patch = { estanteria_id: shelfId, nivel: level, posicion: position };
       type = "cambio_ubicacion";
       body.detalle = `${current.estanteria_id ? `${current.estanteria_id} · nivel ${current.nivel} · ${current.posicion}` : "Sin ubicación"} → ${shelf.codigo} · nivel ${level} · ${position}`;
+    } else if (body.action === "identificacion" && (body.identificacion === "qr" || body.identificacion === "nfc")) {
+      nextState = current.estado;
+      const completed = body.completado !== false;
+      const timestamp = completed ? new Date().toISOString() : null;
+      patch = body.identificacion === "qr"
+        ? { qr_impresa_at: timestamp, qr_impresa_por: completed ? employee : null }
+        : { nfc_grabada_at: timestamp, nfc_grabada_por: completed ? employee : null };
+      type = null;
     } else if (body.action === "editar") {
       const name = clean(body.nombre, 150);
       if (!name) return NextResponse.json({ error: "Indica un nombre válido." }, { status: 400 });
@@ -152,6 +162,9 @@ export async function PATCH(request: Request, context: Context) {
     const updateResponse = await fetch(`${url}/rest/v1/herramientas_comunes_herramientas?${updateParams}`, {
       method: "PATCH", headers: supabaseHeaders(key, { Prefer: "return=representation" }), body: JSON.stringify(patch),
     });
+    if (!updateResponse.ok && body.action === "identificacion") {
+      return NextResponse.json({ error: "Falta aplicar la actualización 202609020001_herramientas_identificacion.sql." }, { status: 503 });
+    }
     const updated = (await parseSupabaseResponse<HerramientaComun[]>(updateResponse))[0];
     if (!updated) return NextResponse.json({ error: "La herramienta cambió mientras la estabas actualizando. Recarga la página." }, { status: 409 });
     if (type) {
