@@ -45,6 +45,9 @@ export async function PATCH(request: Request) {
     });
     const pieces = await parseSupabaseResponse<PiezaDesguace[]>(selectedResponse);
     if (pieces.length !== ids.length) return NextResponse.json({ error: "Alguna pieza seleccionada ya no existe. Actualiza el listado." }, { status: 409 });
+    if (changes.ubicacion && pieces.some((piece) => piece.estado_proceso === "Vendida" || piece.estado_proceso === "Retirada")) {
+      return NextResponse.json({ error: "Las piezas vendidas o retiradas están fuera del almacén y no se pueden colocar." }, { status: 409 });
+    }
 
     const updateParams = new URLSearchParams({ id: idsFilter, select: "*" });
     const updateResponse = await fetch(`${url}/rest/v1/almacen_desguace_piezas?${updateParams}`, {

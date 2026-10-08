@@ -21,6 +21,8 @@ export async function GET(request: Request, context: Context) {
     const { id } = await context.params;
     const [piece, shelves] = await Promise.all([getPieza(id), getShelves()]);
     if (!piece) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
+    if (piece.estado_proceso === "Vendida") return NextResponse.json({ error: "Una pieza vendida está fuera del almacén y no se puede colocar. Deshaz la venta si se registró por error." }, { status: 409 });
+    if (piece.estado_proceso === "Retirada") return NextResponse.json({ error: "Una pieza retirada está fuera del almacén y no se puede colocar." }, { status: 409 });
     const suggestions = suggestLocations(piece, shelves);
     return NextResponse.json({ piece, suggestion: suggestions[0] || null, alternatives: suggestions.slice(1, 4), shelves });
   } catch (error) {
@@ -50,6 +52,8 @@ export async function POST(request: Request, context: Context) {
     }
     const [piece, shelves] = await Promise.all([getPieza(id), getShelves()]);
     if (!piece) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
+    if (piece.estado_proceso === "Vendida") return NextResponse.json({ error: "Una pieza vendida está fuera del almacén y no se puede colocar. Deshaz la venta si se registró por error." }, { status: 409 });
+    if (piece.estado_proceso === "Retirada") return NextResponse.json({ error: "Una pieza retirada está fuera del almacén y no se puede colocar." }, { status: 409 });
     const suggestions = suggestLocations(piece, shelves);
     const suggested = suggestions.find((item) => item.ubicacion === body.ubicacion_sugerida) || null;
     if (result === "colocada_sugerida" && !suggested) {

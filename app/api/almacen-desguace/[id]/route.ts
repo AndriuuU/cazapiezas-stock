@@ -41,6 +41,9 @@ export async function PATCH(request: Request, context: Context) {
     if (raw.action === "publicar") return NextResponse.json({ error: "Usa la publicación de Recambio Fácil para marcar una pieza como Online." }, { status: 400 });
     const normalized = normalizePiezaInput(raw);
     if (raw.action === "vender" || normalized.estado_proceso === "Vendida") return NextResponse.json({ error: "Usa Registrar venta para indicar fecha, empleado y precio final." }, { status: 400 });
+    if ((current.estado_proceso === "Vendida" || current.estado_proceso === "Retirada") && (normalized.ubicacion || normalized.cajon_id != null)) {
+      return NextResponse.json({ error: current.estado_proceso === "Vendida" ? "Una pieza vendida no se puede volver a colocar. Deshaz la venta si se registró por error." : "Una pieza retirada no se puede volver a colocar." }, { status: 409 });
+    }
     delete normalized.publicado_online;
     const patch = { ...normalized, ...actionPatch(raw.action) };
     if (patch.estado_proceso === "Publicada") Object.assign(patch, { publicado_online: true });

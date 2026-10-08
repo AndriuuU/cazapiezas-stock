@@ -20,7 +20,11 @@ export async function PATCH(request: Request, context: Context) {
     const piece = await getPieza(Number(body.pieza_id));
     if (!piece) return NextResponse.json({ error: "Pieza no encontrada." }, { status: 404 });
     let patch: Record<string, unknown>;
-    if (body.action === "add") patch = { cajon_id: Number(id) };
+    if (body.action === "add") {
+      if (piece.estado_proceso === "Vendida") return NextResponse.json({ error: "Una pieza vendida está fuera del almacén y no se puede guardar en un cajón. Deshaz la venta si se registró por error." }, { status: 409 });
+      if (piece.estado_proceso === "Retirada") return NextResponse.json({ error: "Una pieza retirada está fuera del almacén y no se puede guardar en un cajón." }, { status: 409 });
+      patch = { cajon_id: Number(id) };
+    }
     else if (body.action === "remove") {
       if (piece.cajon_id !== Number(id)) return NextResponse.json({ error: "La pieza no pertenece a este cajón." }, { status: 409 });
       const destination = String(body.ubicacion_destino || "").trim().toUpperCase() || null;

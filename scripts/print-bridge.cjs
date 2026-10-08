@@ -7,6 +7,7 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.CAZAPIEZAS_PRINT_PORT || 8765);
+const PRINT_HOST = process.env.CAZAPIEZAS_PRINT_HOST || "192.168.1.36";
 const DRY_RUN = process.env.CAZAPIEZAS_PRINT_DRY_RUN === "1";
 // Una estantería puede incluir decenas de QR en un único documento. El puente
 // solo escucha en la red privada y sanea el HTML antes de imprimir, por lo que
@@ -187,7 +188,9 @@ const server = http.createServer(async (request, response) => {
       const html = printableDocument(payload.html);
       const id = crypto.randomUUID();
       jobs.set(id, { html, format, createdAt: Date.now() });
-      const jobUrl = `http://127.0.0.1:${PORT}/jobs/${id}/print`;
+      // Usamos la IP de red porque otro servicio local puede estar escuchando
+      // en 127.0.0.1 con el mismo puerto y quedarse con la petición de Edge.
+      const jobUrl = `http://${PRINT_HOST}:${PORT}/jobs/${id}/print`;
       if (!DRY_RUN) {
         configurePrinter(format);
         launchPrint(jobUrl, format);
@@ -229,7 +232,7 @@ if (process.argv.includes("--self-test")) {
     for (const [id, job] of jobs) if (job.createdAt < expiry) jobs.delete(id);
   }, 60_000).unref();
   server.listen(PORT, HOST, () => {
-    console.log(`Puente Brother listo en http://192.168.1.36:${PORT}`);
+    console.log(`Puente Brother listo en http://${PRINT_HOST}:${PORT}`);
     console.log(DRY_RUN ? "Modo de prueba: no se enviará papel." : "Deja esta ventana abierta mientras imprimes desde el móvil.");
   });
 }

@@ -664,6 +664,7 @@ type PieceItemProps = { piece: PiezaDesguace; admin: boolean; settings: Warehous
 
 function PieceRow({ piece, admin, settings, selected, expanded, onToggle, onPanel, onLocate, onDrawer, onPhotos, onAction }: PieceItemProps) {
   const photo = piece.fotos?.[0];
+  const outsideStorage = piece.estado_proceso === "Vendida" || piece.estado_proceso === "Retirada";
   return <>
     <tr className={`hover:bg-zinc-800/40 ${selected ? "bg-amber-500/5" : ""}`}>
       <td className="px-3 py-1.5">{admin && <PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} />}</td>
@@ -672,7 +673,7 @@ function PieceRow({ piece, admin, settings, selected, expanded, onToggle, onPane
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={15} />} label="Ver coche" /></td>
       <td className="px-2 py-1.5 text-sm font-bold text-emerald-300">{piece.precio_venta == null ? "-" : `${Number(piece.precio_venta).toFixed(2)} €`}</td>
       <td className="px-2 py-1.5 text-zinc-400">{formatDate(piece.venta?.fecha_venta || piece.fecha_entrada)}</td>
-      <td className="px-2 py-1.5">{piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : admin || settings.employeesCanLocatePieces ? <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button> : <span className="text-xs text-zinc-600">Sin ubicar</span>}</td>
+      <td className="px-2 py-1.5">{outsideStorage ? <span className="text-xs font-bold text-zinc-500">Fuera del almacén</span> : piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} compact /> : admin || settings.employeesCanLocatePieces ? <button onClick={onLocate} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 font-bold text-amber-200 hover:bg-amber-500/20"><MapPin size={13} /> Asignar</button> : <span className="text-xs text-zinc-600">Sin ubicar</span>}</td>
       <td className="max-w-48 px-2 py-1.5"><p className="truncate text-[11px] text-zinc-300">{piece.estado_pieza || "Sin estado"}</p><p className="truncate text-[11px] text-zinc-500">{piece.estado_proceso}</p></td>
       <td className="px-2 py-1.5"><div className="flex flex-col items-start gap-1"><OnlineBadge online={piece.publicado_online} />{admin && <RecambioFacilLink piece={piece} compact />}</div></td>
       <td className="px-2 py-1.5"><CompactToggle active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={16} />} label={piece.estado_proceso === "Vendida" ? "Ver venta" : "Acciones"} /></td>
@@ -683,6 +684,7 @@ function PieceRow({ piece, admin, settings, selected, expanded, onToggle, onPane
 
 function PieceCard({ piece, admin, settings, selected, expanded, onToggle, onPanel, onLocate, onDrawer, onPhotos, onAction }: PieceItemProps) {
   const photo = piece.fotos?.[0];
+  const outsideStorage = piece.estado_proceso === "Vendida" || piece.estado_proceso === "Retirada";
   return <article className={`p-4 ${selected ? "bg-amber-500/5" : ""}`}>
     <div className="flex items-start gap-3">
       {admin && <div className="pt-2"><PrettyCheckbox checked={selected} onChange={onToggle} label={`Seleccionar ${piece.codigo_interno}`} /></div>}
@@ -696,7 +698,7 @@ function PieceCard({ piece, admin, settings, selected, expanded, onToggle, onPan
     <div className="mt-3 flex flex-wrap items-center gap-2"><OnlineBadge online={piece.publicado_online} large />{admin && <RecambioFacilLink piece={piece} />}</div>
     <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-900 p-3">
       <p className="mb-2 text-sm font-black text-cyan-300">Ubicación en el almacén</p>
-      {piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : admin || settings.employeesCanLocatePieces ? <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button> : <p className="text-sm text-zinc-500">Pieza sin ubicar</p>}
+      {outsideStorage ? <p className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm font-bold text-zinc-400">Fuera del almacén · no necesita ubicación</p> : piece.ubicacion ? <WarehouseLocationLink location={piece.ubicacion} prominent /> : admin || settings.employeesCanLocatePieces ? <button onClick={onLocate} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-black text-amber-200"><MapPin size={18} /> Sin ubicar · asignar ubicación</button> : <p className="text-sm text-zinc-500">Pieza sin ubicar</p>}
     </div>
     <div className="mt-3 grid gap-3 rounded-xl bg-zinc-950/60 p-3 sm:grid-cols-2"><div><span className="block text-xs font-semibold text-zinc-500">Estado de la pieza</span><p className="mt-1 text-sm font-semibold leading-5 text-zinc-200">{piece.estado_pieza || "Sin estado"}</p></div><div><span className="block text-xs font-semibold text-zinc-500">Proceso</span><p className="mt-1 text-sm font-semibold leading-5 text-zinc-300">{piece.estado_proceso}</p></div></div>
     <div className="mt-3 flex gap-2"><CompactToggle wide active={expanded === "vehicle"} onClick={() => onPanel("vehicle")} icon={<CarFront size={17} />} label="Ver coche" /><CompactToggle wide active={expanded === "actions"} onClick={() => onPanel("actions")} icon={<MoreHorizontal size={18} />} label={piece.estado_proceso === "Vendida" ? "Ver venta" : "Acciones"} /></div>
